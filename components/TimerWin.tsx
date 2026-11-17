@@ -133,12 +133,15 @@ export function TimerWin() {
             else setDesk({ timerLabel: v });
           }}
         />
+        {/* Both are plain buttons with their own key: Stop turning into a submit button mid-click would start a new timer. */}
         {r ? (
-          <button type="button" className="btn tstop" onClick={() => stopTimer()}>
+          <button key="stop" type="button" className="btn tstop" onClick={() => stopTimer()}>
             Stop
           </button>
         ) : (
-          <button className="btn">Start</button>
+          <button key="start" type="button" className="btn" onClick={() => startTimer(text, project || null)}>
+            Start
+          </button>
         )}
       </form>
       <datalist id="timer-suggest">
