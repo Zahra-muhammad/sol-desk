@@ -49,6 +49,15 @@ describe('lock screen: 4-number password', () => {
     }
   });
 
+  it('unlocking has no length cap, so an older, longer password still works', async () => {
+    setDesk({ ...initialDesk(), locked: true, lockMode: 'enter' });
+    const view = render(<LockScreen />);
+    await flush();
+    const input = view.container.querySelector('#pw1 input') as HTMLInputElement;
+    expect(input.getAttribute('inputmode')).toBe('numeric');
+    expect(input.hasAttribute('maxlength')).toBe(false);
+  });
+
   it('refuses letters or the wrong length', async () => {
     const { pw1, msg, submit } = setup();
     for (const bad of ['abcd', '123', '12a4']) {

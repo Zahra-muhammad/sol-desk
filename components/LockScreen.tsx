@@ -22,6 +22,8 @@ const MSG: Record<Phase, string> = {
 
 /** Number keypad on phones; at most 4 digits can be typed. */
 const PIN_INPUT = { inputMode: 'numeric', pattern: '[0-9]*', maxLength: PASSWORD_LENGTH } as const;
+/** Unlocking: still the number keypad, but no length cap, so a password set before the 4-number rule still works. */
+const UNLOCK_INPUT = { inputMode: 'numeric' } as const;
 
 function waitText(sec: number) {
   return sec > 90 ? `Too many tries. Wait ${Math.ceil(sec / 60)} min.` : `Too many tries. Wait ${sec}s.`;
@@ -195,7 +197,7 @@ export function LockScreen() {
             <input
               ref={pw1}
               type="password"
-              {...PIN_INPUT}
+              {...(newPw ? PIN_INPUT : UNLOCK_INPUT)}
               name="pw"
               placeholder={newPw ? 'New password' : phase === 'change' ? 'Current password' : 'Enter password'}
               aria-label={newPw ? 'New password' : phase === 'change' ? 'Current password' : 'Password'}
