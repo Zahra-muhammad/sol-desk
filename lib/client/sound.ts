@@ -128,8 +128,3 @@ export function snd(k: Snd) {
     /* sound is a nicety; never let it break a click */
   }
 }
-
-/** Hover tick for mouse users only (touch has no hover). */
-export function hoverTick(e: { pointerType?: string }) {
-  if (e.pointerType === 'mouse') snd('tick');
-}

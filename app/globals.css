@@ -223,7 +223,7 @@ body.locked .win,body.locked #icons,body.locked #tasks,body.locked #restore,body
 /* ---- additions for the app (not in the prototype) ---- */
 /* Visible keyboard focus where the prototype removed outlines. */
 .pname:focus-visible{outline:2px solid var(--ev);outline-offset:4px;border-radius:6px}
-.pw:focus-within{box-shadow:0 0 0 1px color-mix(in srgb,var(--ink) 16%,transparent) inset,0 0 0 2px var(--ev)}
+.pw:focus-within{box-shadow:0 0 0 1px color-mix(in srgb,var(--ink) 38%,transparent) inset}
 .in:focus-visible,.qa input:focus-visible{border-color:var(--ev)}
 .win:focus-visible{outline:2px solid var(--ev);outline-offset:2px;border-radius:12px}
 .sr{position:absolute!important;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
