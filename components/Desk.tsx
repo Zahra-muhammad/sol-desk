@@ -31,7 +31,7 @@ const typing = () => /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagNam
  * The whole desk. Before login the server renders this with `initial = null`:
  * only the lock screen and empty chrome — no data reaches the browser until the password is accepted.
  */
-export function Desk({ mode, initial }: { mode: DeskMode; initial: DeskState | null }) {
+export function Desk({ mode, initial, detail }: { mode: DeskMode; initial: DeskState | null; detail?: string }) {
   const [mounted, setMounted] = useState(false);
   const ready = useDesk((s) => s.ready);
   const locked = useDesk((s) => s.locked);
@@ -53,7 +53,7 @@ export function Desk({ mode, initial }: { mode: DeskMode; initial: DeskState | n
       /* ignore */
     }
     if (initial) loadState(initial, true);
-    else setDesk({ locked: true, lockMode: (mode === 'ok' ? 'enter' : mode) as LockMode });
+    else setDesk({ locked: true, lockMode: (mode === 'ok' ? 'enter' : mode) as LockMode, lockDetail: detail ?? null });
     setMounted(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

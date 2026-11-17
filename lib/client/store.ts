@@ -54,6 +54,8 @@ export interface DeskStore {
 
   locked: boolean;
   lockMode: LockMode;
+  /** Development only: why the server couldn't load the desk. */
+  lockDetail: string | null;
   saveStatus: SaveStatus;
 }
 
@@ -84,6 +86,7 @@ export const initialDesk = (): DeskStore => ({
   lastDeleted: null,
   locked: true,
   lockMode: 'loading',
+  lockDetail: null,
   saveStatus: 'saved',
 });
 

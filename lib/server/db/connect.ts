@@ -1,5 +1,6 @@
 // Opening a database, shared by the app (via client.ts) and the CLI scripts.
 // No `server-only` import here, so `tsx scripts/*.ts` can use it.
+import fs from 'node:fs';
 import path from 'node:path';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import * as schema from './schema';
@@ -18,7 +19,10 @@ export async function openDb(url: string, opts: { migrate?: boolean } = {}): Pro
     const { PGlite } = await import('@electric-sql/pglite');
     const { drizzle } = await import('drizzle-orm/pglite');
     const loc = url.slice('pglite:'.length);
-    const client = loc === 'memory' || loc === '' ? new PGlite() : new PGlite(loc);
+    const inMemory = loc === 'memory' || loc === '';
+    // PGlite creates its own folder but not missing parents (e.g. a deleted ./.data).
+    if (!inMemory) fs.mkdirSync(path.dirname(path.resolve(loc)), { recursive: true });
+    const client = inMemory ? new PGlite() : new PGlite(loc);
     const db = drizzle(client, { schema });
     if (opts.migrate) {
       const { migrate } = await import('drizzle-orm/pglite/migrator');

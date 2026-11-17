@@ -14,6 +14,7 @@ export const dynamic = 'force-dynamic';
 export default async function Page() {
   let mode: DeskMode = 'enter';
   let initial: DeskState | null = null;
+  let detail: string | undefined;
   try {
     const db = await getDb();
     if (!(await hasPassword(db))) mode = 'set';
@@ -28,6 +29,8 @@ export default async function Page() {
   } catch (e) {
     console.error('[page] could not load the desk', e);
     mode = 'offline';
+    // While developing, say why on the lock screen. Never in production.
+    if (process.env.NODE_ENV !== 'production') detail = e instanceof Error ? e.message : String(e);
   }
-  return <Desk mode={mode} initial={initial} />;
+  return <Desk mode={mode} initial={initial} detail={detail} />;
 }

@@ -29,6 +29,7 @@ function waitText(sec: number) {
 export function LockScreen() {
   const locked = useDesk((s) => s.locked);
   const lockMode = useDesk((s) => s.lockMode);
+  const lockDetail = useDesk((s) => s.lockDetail);
   const [phase, setPhase] = useState<Phase>(lockMode);
   const [two, setTwo] = useState(false);
   const [msg, setMsg] = useState(MSG[lockMode]);
@@ -171,7 +172,9 @@ export function LockScreen() {
       ? 'Forgot it? Run “npm run reset-password” where your desk is hosted, then choose a new one.'
       : phase === 'set'
         ? `At least ${MIN} characters. It locks after 30 minutes away.`
-        : '';
+        : phase === 'offline' && lockDetail
+          ? `Dev only — ${lockDetail}`
+          : '';
   const newPw = phase === 'set' || phase === 'newpw';
 
   return (
