@@ -10,7 +10,7 @@ export const SESSION_DAYS = 30;
 export const IDLE_MS = 30 * 60e3;
 /** Heartbeats are throttled to one a minute, so give the server a little slack. */
 const IDLE_GRACE_MS = 2 * 60e3;
-export const MIN_PASSWORD = 8;
+export { isValidPassword, PASSWORD_RULE } from '@/lib/shared/password';
 
 export const COOKIE = process.env.NODE_ENV === 'production' ? '__Host-sol' : 'sol';
 

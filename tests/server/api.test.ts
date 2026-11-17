@@ -16,7 +16,7 @@ import { sessionCookie } from '@/lib/server/http';
 import { makeItem } from '../helpers/fixtures';
 
 const URL0 = 'http://localhost:3000';
-const PW = 'correct horse battery';
+const PW = '4821';
 let db: DB;
 
 function req(path: string, init: { method?: string; body?: unknown; cookie?: string; headers?: Record<string, string> } = {}) {
@@ -76,11 +76,27 @@ describe('nothing without a session', () => {
 });
 
 describe('password and sessions', () => {
+  it('the password must be exactly 4 numbers', async () => {
+    for (const bad of ['short', '123', '12345', 'abcd', '12a4', ' 1234']) {
+      const r = await setup.POST(req('/api/auth/setup', { method: 'POST', body: { password: bad } }));
+      expect(r.status, bad).toBe(400);
+      expect((await r.json()).error).toBe('Use exactly 4 numbers.');
+    }
+    const ok = await setup.POST(req('/api/auth/setup', { method: 'POST', body: { password: '0042' } }));
+    expect(ok.status).toBe(200);
+  });
+
+  it('changing the password also needs exactly 4 numbers', async () => {
+    const cookie = await setUpPassword();
+    const r = await password.POST(req('/api/auth/password', { method: 'POST', cookie, body: { current: PW, next: 'longer password' } }));
+    expect(r.status).toBe(400);
+  });
+
   it('first run sets the password once, then refuses', async () => {
     const short = await setup.POST(req('/api/auth/setup', { method: 'POST', body: { password: 'short' } }));
     expect(short.status).toBe(400);
     await setUpPassword();
-    const again = await setup.POST(req('/api/auth/setup', { method: 'POST', body: { password: 'someone else 123' } }));
+    const again = await setup.POST(req('/api/auth/setup', { method: 'POST', body: { password: '9999' } }));
     expect(again.status).toBe(409);
   });
 
@@ -157,15 +173,15 @@ describe('password and sessions', () => {
   it('change password checks the current one and signs out other devices', async () => {
     const cookie = await setUpPassword();
     const other = cookieOf(await login.POST(req('/api/auth/login', { method: 'POST', body: { password: PW } })));
-    const wrong = await password.POST(req('/api/auth/password', { method: 'POST', cookie, body: { current: 'not it at all', next: 'brand new pass' } }));
+    const wrong = await password.POST(req('/api/auth/password', { method: 'POST', cookie, body: { current: 'not it at all', next: '7305' } }));
     expect(wrong.status).toBe(401);
     const check = await password.POST(req('/api/auth/password', { method: 'POST', cookie, body: { current: PW } }));
     expect(check.status).toBe(200);
-    const change = await password.POST(req('/api/auth/password', { method: 'POST', cookie, body: { current: PW, next: 'brand new pass' } }));
+    const change = await password.POST(req('/api/auth/password', { method: 'POST', cookie, body: { current: PW, next: '7305' } }));
     expect(change.status).toBe(200);
     expect((await stateRoute.GET(req('/api/state', { cookie: other }))).status).toBe(401);
     expect((await stateRoute.GET(req('/api/state', { cookie }))).status).toBe(200);
-    const newLogin = await login.POST(req('/api/auth/login', { method: 'POST', body: { password: 'brand new pass' } }));
+    const newLogin = await login.POST(req('/api/auth/login', { method: 'POST', body: { password: '7305' } }));
     expect(newLogin.status).toBe(200);
   });
 });

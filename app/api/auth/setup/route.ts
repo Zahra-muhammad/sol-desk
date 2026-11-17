@@ -1,4 +1,4 @@
-import { MIN_PASSWORD, createSession, hasPassword, setInitialPassword } from '@/lib/server/auth';
+import { PASSWORD_RULE, createSession, hasPassword, isValidPassword, setInitialPassword } from '@/lib/server/auth';
 import { getDb } from '@/lib/server/db/client';
 import { clientIp, handle, json, sameOrigin, sessionCookie } from '@/lib/server/http';
 import { PasswordIn } from '@/lib/server/validate';
@@ -8,7 +8,7 @@ export const POST = handle(async (req: Request) => {
   if (!sameOrigin(req)) return json({ error: 'bad origin' }, 403);
   const body = PasswordIn.safeParse(await req.json().catch(() => null));
   if (!body.success) return json({ error: 'bad request' }, 400);
-  if (body.data.password.length < MIN_PASSWORD) return json({ error: `Use at least ${MIN_PASSWORD} characters.` }, 400);
+  if (!isValidPassword(body.data.password)) return json({ error: PASSWORD_RULE }, 400);
   const db = await getDb();
   if (await hasPassword(db)) return json({ error: 'A password is already set.' }, 409);
   if (!(await setInitialPassword(db, body.data.password))) return json({ error: 'A password is already set.' }, 409);

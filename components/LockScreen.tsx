@@ -6,6 +6,7 @@ import { post } from '@/lib/client/api';
 import { snd } from '@/lib/client/sound';
 import { setDesk, useDesk } from '@/lib/client/store';
 import { DOW, MON, pad } from '@/lib/shared/dates';
+import { PASSWORD_LENGTH, PASSWORD_RULE, isValidPassword } from '@/lib/shared/password';
 import { ArrowIcon } from './Glyphs';
 
 type Phase = 'loading' | 'offline' | 'set' | 'enter' | 'change' | 'newpw';
@@ -13,13 +14,14 @@ type Phase = 'loading' | 'offline' | 'set' | 'enter' | 'change' | 'newpw';
 const MSG: Record<Phase, string> = {
   loading: 'Waking up your desk…',
   offline: 'Your desk can’t be reached right now. Check your connection and reload.',
-  set: 'Choose a password for your desk. Only you will know it.',
+  set: 'Choose a 4-number password for your desk. Only you will know it.',
   enter: '',
   change: 'Enter your current password to change it.',
-  newpw: 'Choose a new password.',
+  newpw: 'Choose a new 4-number password.',
 };
 
-const MIN = 8;
+/** Number keypad on phones; at most 4 digits can be typed. */
+const PIN_INPUT = { inputMode: 'numeric', pattern: '[0-9]*', maxLength: PASSWORD_LENGTH } as const;
 
 function waitText(sec: number) {
   return sec > 90 ? `Too many tries. Wait ${Math.ceil(sec / 60)} min.` : `Too many tries. Wait ${sec}s.`;
@@ -93,8 +95,8 @@ export function LockScreen() {
 
     if (phase === 'set' || phase === 'newpw') {
       if (!two) {
-        if (v1.length < MIN) {
-          setMsg(`Use at least ${MIN} characters.`);
+        if (!isValidPassword(v1)) {
+          setMsg(PASSWORD_RULE);
           shake();
           return;
         }
@@ -171,7 +173,7 @@ export function LockScreen() {
     phase === 'enter' || changing
       ? 'Forgot it? Run “npm run reset-password” where your desk is hosted, then choose a new one.'
       : phase === 'set'
-        ? `At least ${MIN} characters. It locks after 30 minutes away.`
+        ? '4 numbers, like a phone PIN. It locks after 30 minutes away.'
         : phase === 'offline' && lockDetail
           ? `Dev only — ${lockDetail}`
           : '';
@@ -188,11 +190,12 @@ export function LockScreen() {
           S
         </div>
         <b>Sol</b>
-        <form autoComplete="off" onSubmit={submit}>
+        <form autoComplete="off" noValidate onSubmit={submit}>
           <div className="pw" id="pw1" hidden={hidePw1}>
             <input
               ref={pw1}
               type="password"
+              {...PIN_INPUT}
               name="pw"
               placeholder={newPw ? 'New password' : phase === 'change' ? 'Current password' : 'Enter password'}
               aria-label={newPw ? 'New password' : phase === 'change' ? 'Current password' : 'Password'}
@@ -203,7 +206,7 @@ export function LockScreen() {
             </button>
           </div>
           <div className="pw" id="pw2" hidden={!two}>
-            <input ref={pw2} type="password" name="pw2" placeholder="Type it again" aria-label="Confirm password" autoComplete="new-password" />
+            <input ref={pw2} type="password" {...PIN_INPUT} name="pw2" placeholder="Type it again" aria-label="Confirm password" autoComplete="new-password" />
             <button aria-label="Save password" disabled={busy}>
               <ArrowIcon />
             </button>

@@ -28,7 +28,7 @@ ANTHROPIC_API_KEY=<your key>                     # optional locally; the planner
 npm run dev          # http://localhost:3000
 ```
 
-The first visit shows **Choose a password**. Type it twice (at least 8 characters) and you're in.
+The first visit shows **Choose a password**. Type a 4-number code twice (like a phone PIN) and you're in.
 
 ## Environment variables
 
@@ -90,7 +90,7 @@ You can also change the password while you're logged in: **Tools → Change pass
 
 ### Login and privacy
 
-- **One password, stored only as an argon2id hash.** There is no sign-up and no usernames.
+- **One 4-number password, stored only as an argon2id hash.** There is no sign-up and no usernames. A 4-number code has 10,000 possibilities; the rate limits below allow at most about 20 guesses an hour, so the lockouts are what keep it safe.
 - **The page itself is gated.** Without a valid, unlocked session, the server renders only the lock screen. No items, names or notes are in the HTML.
 - **Every API route checks the session.** Without one, it returns `401`.
 - **Session cookie:** `__Host-sol`, which is `HttpOnly`, `Secure`, `SameSite=Strict` and lasts 30 days. The cookie holds a random token. The database stores only an HMAC of it (keyed by `SESSION_SECRET`).
@@ -190,7 +190,7 @@ prototype/           the original prototype
 ## Where the app differs from the prototype
 
 - **Data:** it lives in Postgres instead of the browser. File → "Copy all my data" became **Download backup** / **Import backup**.
-- **Password:** at least 8 characters (the prototype allowed 4). It's hashed with argon2id on the server.
+- **Password:** exactly 4 numbers, like a phone PIN (the prototype took any 4+ characters). Phones show the number keypad. It's hashed with argon2id on the server.
 - **Sounds:** mechanical clicks instead of the prototype's soft taps.
 - **Accessibility:** each change below gets Lighthouse accessibility to 100.
   - The window buttons are 24 px targets drawing the same 13 px dots. The maximise dot sits 5 px further from the close dot.

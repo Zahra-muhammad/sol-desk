@@ -67,7 +67,7 @@ beforeAll(async () => {
     new Request('http://localhost:3000/api/auth/setup', {
       method: 'POST',
       headers: { 'content-type': 'application/json', host: 'localhost:3000' },
-      body: JSON.stringify({ password: 'correct horse battery' }),
+      body: JSON.stringify({ password: '4821' }),
     }),
   );
   cookie = (r.headers.get('set-cookie') || '').split(';')[0];

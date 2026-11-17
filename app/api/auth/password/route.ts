@@ -1,4 +1,4 @@
-import { MIN_PASSWORD, changePassword, deleteOtherSessions, recordAttempt, retryAfter, verifyPassword } from '@/lib/server/auth';
+import { PASSWORD_RULE, changePassword, deleteOtherSessions, isValidPassword, recordAttempt, retryAfter, verifyPassword } from '@/lib/server/auth';
 import { clientIp, handle, json, requireSession } from '@/lib/server/http';
 import { ChangePasswordIn } from '@/lib/server/validate';
 
@@ -21,7 +21,7 @@ export const POST = handle(async (req: Request) => {
     return json({ error: 'wrong password', ...(next ? { retryAfter: next } : {}) }, 401);
   }
   if (body.data.next === undefined) return json({ ok: true });
-  if (body.data.next.length < MIN_PASSWORD) return json({ error: `Use at least ${MIN_PASSWORD} characters.` }, 400);
+  if (!isValidPassword(body.data.next)) return json({ error: PASSWORD_RULE }, 400);
   await changePassword(a.db, body.data.next);
   await deleteOtherSessions(a.db, a.session.id);
   return json({ ok: true });

@@ -9,7 +9,8 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sol-desk-'));
 afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
 describe('local database folder', () => {
-  it('starts even when the parent folder (e.g. ./.data) does not exist yet', async () => {
+  // Creating an on-disk database writes many files — slow on Windows, so allow extra time.
+  it('starts even when the parent folder (e.g. ./.data) does not exist yet', { timeout: 60_000 }, async () => {
     const dir = path.join(root, 'missing', 'parent', 'pglite');
     const { db, close } = await openDb('pglite:' + dir, { migrate: true });
     try {
