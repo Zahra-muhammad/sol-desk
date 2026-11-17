@@ -265,6 +265,7 @@ body.locked .win,body.locked #icons,body.locked #tasks,body.locked #restore,body
 .nb{display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr);height:100%;min-height:0}
 .nlist{border-right:1px solid var(--line);overflow:auto;padding:12px 10px;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
 .nlist .qa{flex-direction:column;gap:6px}
+.nlist .qa input{flex:none}
 .nlist .qa .btn{width:100%}
 .nrow{display:block;width:100%;text-align:left;padding:8px;border-radius:8px;margin-bottom:2px}
 .nrow:hover{background:var(--hov)}
