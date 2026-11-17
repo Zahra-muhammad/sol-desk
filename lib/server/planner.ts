@@ -3,7 +3,8 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { shiftDay, zonedParts } from '@/lib/shared/dates';
 import { uid } from '@/lib/shared/ids';
-import type { Item, Settings } from '@/lib/shared/types';
+import { fmtDur, totals } from '@/lib/shared/time';
+import type { Item, Note, Settings, TimeEntry } from '@/lib/shared/types';
 
 export const TIME_ZONE = 'Asia/Dubai';
 export const DEFAULT_MODEL = 'claude-sonnet-5-5';
@@ -108,9 +109,34 @@ export function plannerWindow(now = new Date()) {
 
 const oneLine = (s: string, n: number) => s.replace(/\s+/g, ' ').trim().slice(0, n);
 
+/** Time tracked in the last 7 days, per project, and any timer running now. */
+function timeLines(entries: TimeEntry[], settings: Settings, now: Date): string {
+  const from = now.getTime() - 7 * 864e5;
+  const recent = entries.filter((e) => !e.deletedAt && Date.parse(e.startedAt) >= from);
+  const { total, byProject } = totals(recent, new Date(from), now.getTime());
+  const run = recent.find((e) => !e.endedAt) ?? entries.find((e) => !e.endedAt && !e.deletedAt);
+  const parts = [
+    byProject.p1 && `${settings.p1.name} ${fmtDur(byProject.p1)}`,
+    byProject.p2 && `${settings.p2.name} ${fmtDur(byProject.p2)}`,
+    byProject.none && `no project ${fmtDur(byProject.none)}`,
+  ].filter(Boolean);
+  const runLine = run
+    ? `\nTimer running now: "${oneLine(run.label, 100) || 'no label'}"${run.project ? ` (${settings[run.project].name})` : ''} since ${zonedParts(new Date(run.startedAt), TIME_ZONE).time}.`
+    : '';
+  return `Time tracked in the last 7 days: ${total ? `${fmtDur(total)} — ${parts.join(', ')}` : 'none yet'}.${runLine}`;
+}
+
 /** The planner data block sent with every message. */
-export function contextBlock(items: Item[], settings: Settings, now = new Date()): string {
+export function contextBlock(
+  items: Item[],
+  settings: Settings,
+  now = new Date(),
+  extra: { entries?: TimeEntry[]; notes?: Note[] } = {},
+): string {
   const w = plannerWindow(now);
+  const noteRows = (extra.notes ?? [])
+    .slice(0, 10)
+    .map((n) => `- ${oneLine(n.title, 100) || 'Untitled'}: ${oneLine(n.body, 300) || '(empty)'}`);
   const pn = (p: Item['project']) => (p === 'p1' ? settings.p1.name : p === 'p2' ? settings.p2.name : '-');
   const proj = (k: 'p1' | 'p2') => {
     const s = settings[k];
@@ -136,6 +162,9 @@ Projects: ${proj('p1')}; ${proj('p2')}.
 Items from ${w.from} to ${w.to}, plus undated ones and anything finished in the last 7 days
 (type | date | time | minutes | project | status | title | details):
 ${rows.join('\n') || '(nothing planned yet)'}
+${timeLines(extra.entries ?? [], settings, now)}
+Notebook (most recently edited first):
+${noteRows.join('\n') || '(no notes yet)'}
 --- End of planner data ---`;
 }
 

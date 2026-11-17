@@ -7,7 +7,7 @@ import { initialDesk, setDesk } from '@/lib/client/store';
 import { DEFAULT_SETTINGS } from '@/lib/shared/types';
 
 const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
-  if (url === '/api/state') return new Response(JSON.stringify({ items: [], settings: DEFAULT_SETTINGS, chat: [], layout: [], cursor: new Date().toISOString() }));
+  if (url === '/api/state') return new Response(JSON.stringify({ items: [], entries: [], notes: [], settings: DEFAULT_SETTINGS, chat: [], layout: [], cursor: new Date().toISOString() }));
   return new Response(JSON.stringify({ ok: true }));
 });
 

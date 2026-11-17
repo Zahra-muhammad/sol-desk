@@ -241,3 +241,48 @@ body.locked .win,body.locked #icons,body.locked #tasks,body.locked #restore,body
  .ft button,.hd button,.mo .add,.lcancel{min-height:44px}
  .seg button{min-height:36px}
 }
+
+/* ---- timer.app ---- */
+.tclock{font-size:44px;font-weight:600;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums;color:var(--mut);margin:2px 0 6px}
+.tclock.on{color:var(--ink)}
+.tnow{font-size:13px;color:var(--mut);margin:0 0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tstop{background:var(--mt);color:#111}
+.row.te{cursor:default;gap:8px}
+.row.te .tm{width:40px}
+.rb{width:26px;height:26px;flex:none;display:grid;place-items:center;border-radius:6px;color:var(--mut)}
+.rb:hover{background:var(--chip);color:var(--ink)}
+.rb svg{width:12px;height:12px}
+.hd span{color:var(--ink);font-variant-numeric:tabular-nums}
+.tw{display:grid;grid-template-columns:96px minmax(0,1fr) auto;align-items:center;gap:10px;padding:4px 0}
+.tw .twl{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tw .meter{margin:0}
+.tmr{width:auto;padding:0 9px;gap:6px;display:flex;align-items:center;font-size:12px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.tdot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;animation:tpulse 2s ease-in-out infinite}
+@keyframes tpulse{50%{opacity:.35}}
+
+/* ---- notebook.md ---- */
+#w-notes .bd{container-type:inline-size}
+.nb{display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr);height:100%;min-height:0}
+.nlist{border-right:1px solid var(--line);overflow:auto;padding:12px 10px;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+.nlist .qa{flex-direction:column;gap:6px}
+.nlist .qa .btn{width:100%}
+.nrow{display:block;width:100%;text-align:left;padding:8px;border-radius:8px;margin-bottom:2px}
+.nrow:hover{background:var(--hov)}
+.nrow.on{background:var(--chip);box-shadow:0 0 0 1px var(--line) inset}
+.nrow b{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nrow span{display:block;font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ned{overflow:auto;padding:16px;min-height:0;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+.nedi{display:flex;flex-direction:column;gap:4px;min-height:100%}
+.ntitle{margin-bottom:0}
+.ntitle::placeholder{color:var(--faint)}
+textarea.nbody{flex:1;min-height:220px;resize:none;margin-top:4px;font-size:14px;line-height:1.55}
+.nback{display:none;align-self:flex-start;font-size:13px;color:var(--mut);padding:4px 0;margin-bottom:4px}
+.nback:hover{color:var(--ink)}
+/* Narrow window or phone: one pane at a time. */
+@container (max-width:470px){
+ .nb{grid-template-columns:minmax(0,1fr)}
+ .nlist{border-right:0}
+ .nb.has .nlist{display:none}
+ .nb:not(.has) .ned{display:none}
+ .nback{display:inline-flex}
+}

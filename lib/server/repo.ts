@@ -1,9 +1,9 @@
 import 'server-only';
 import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
-import type { Backup, ChatMessage, DeskDelta, DeskState, Item, Settings, SettingsPatch, WinLayout } from '@/lib/shared/types';
+import type { Backup, ChatMessage, DeskDelta, DeskState, Item, Note, Settings, SettingsPatch, TimeEntry, WinLayout } from '@/lib/shared/types';
 import type { DB } from './db/client';
-import { chatMessages, items, settings, windowLayout } from './db/schema';
-import { ItemIn, LayoutIn, SettingsPatchIn, normalizeImportedItem } from './validate';
+import { chatMessages, items, notes, settings, timeEntries, windowLayout } from './db/schema';
+import { EntryIn, ItemIn, LayoutIn, NoteIn, SettingsPatchIn, normalizeImportedEntry, normalizeImportedItem } from './validate';
 
 type ItemRow = typeof items.$inferSelect;
 type SettingsRow = typeof settings.$inferSelect;
@@ -29,6 +29,30 @@ export function toItem(r: ItemRow): Item {
     with: r.with,
     link: r.link,
     notes: r.notes,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    deletedAt: r.deletedAt ? r.deletedAt.toISOString() : null,
+  };
+}
+
+export function toEntry(r: typeof timeEntries.$inferSelect): TimeEntry {
+  return {
+    id: r.id,
+    label: r.label,
+    project: r.project,
+    startedAt: r.startedAt.toISOString(),
+    endedAt: r.endedAt ? r.endedAt.toISOString() : null,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    deletedAt: r.deletedAt ? r.deletedAt.toISOString() : null,
+  };
+}
+
+export function toNote(r: typeof notes.$inferSelect): Note {
+  return {
+    id: r.id,
+    title: r.title,
+    body: r.body,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
     deletedAt: r.deletedAt ? r.deletedAt.toISOString() : null,
@@ -144,6 +168,108 @@ export async function liveItems(db: DB): Promise<Item[]> {
   return rows.map(toItem);
 }
 
+// ---------------------------------------------------------------- time entries
+
+/** Upsert tracked time. Same rules as items: newest updatedAt wins, deletes are soft. */
+export async function pushEntries(db: DB, list: TimeEntry[], opts: { force?: boolean; now?: Date } = {}): Promise<TimeEntry[]> {
+  if (!list.length) return [];
+  const now = opts.now ?? new Date();
+  const latest = new Map<string, TimeEntry>();
+  for (const e of list) {
+    const cur = latest.get(e.id);
+    if (!cur || cur.updatedAt <= e.updatedAt) latest.set(e.id, e);
+  }
+  const rows = [...latest.values()].map((e) => ({
+    id: e.id,
+    label: e.label,
+    project: e.project,
+    startedAt: new Date(e.startedAt),
+    endedAt: e.endedAt ? new Date(e.endedAt) : null,
+    createdAt: new Date(e.createdAt),
+    updatedAt: new Date(Math.min(Date.parse(e.updatedAt), now.getTime() + MAX_FUTURE_MS)),
+    deletedAt: e.deletedAt ? new Date(e.deletedAt) : null,
+    syncedAt: sql`now()`,
+  }));
+  for (let i = 0; i < rows.length; i += 500) {
+    await db
+      .insert(timeEntries)
+      .values(rows.slice(i, i + 500))
+      .onConflictDoUpdate({
+        target: timeEntries.id,
+        set: {
+          label: ex('label'),
+          project: ex('project'),
+          startedAt: ex('started_at'),
+          endedAt: ex('ended_at'),
+          updatedAt: ex('updated_at'),
+          deletedAt: ex('deleted_at'),
+          syncedAt: sql`now()`,
+        },
+        ...(opts.force ? {} : { setWhere: sql`${timeEntries.updatedAt} <= excluded.updated_at` }),
+      });
+  }
+  const ids = [...latest.keys()];
+  const out: TimeEntry[] = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    out.push(...(await db.select().from(timeEntries).where(inArray(timeEntries.id, ids.slice(i, i + 500)))).map(toEntry));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- notebook
+
+/** Upsert notebook pages. Newest updatedAt wins; deletes are soft. */
+export async function pushNotes(db: DB, list: Note[], opts: { force?: boolean; now?: Date } = {}): Promise<Note[]> {
+  if (!list.length) return [];
+  const now = opts.now ?? new Date();
+  const latest = new Map<string, Note>();
+  for (const n of list) {
+    const cur = latest.get(n.id);
+    if (!cur || cur.updatedAt <= n.updatedAt) latest.set(n.id, n);
+  }
+  const rows = [...latest.values()].map((n) => ({
+    id: n.id,
+    title: n.title,
+    body: n.body,
+    createdAt: new Date(n.createdAt),
+    updatedAt: new Date(Math.min(Date.parse(n.updatedAt), now.getTime() + MAX_FUTURE_MS)),
+    deletedAt: n.deletedAt ? new Date(n.deletedAt) : null,
+    syncedAt: sql`now()`,
+  }));
+  for (let i = 0; i < rows.length; i += 500) {
+    await db
+      .insert(notes)
+      .values(rows.slice(i, i + 500))
+      .onConflictDoUpdate({
+        target: notes.id,
+        set: { title: ex('title'), body: ex('body'), updatedAt: ex('updated_at'), deletedAt: ex('deleted_at'), syncedAt: sql`now()` },
+        ...(opts.force ? {} : { setWhere: sql`${notes.updatedAt} <= excluded.updated_at` }),
+      });
+  }
+  const ids = [...latest.keys()];
+  const out: Note[] = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    out.push(...(await db.select().from(notes).where(inArray(notes.id, ids.slice(i, i + 500)))).map(toNote));
+  }
+  return out;
+}
+
+export async function liveNotes(db: DB): Promise<Note[]> {
+  const rows = await db.select().from(notes).where(isNull(notes.deletedAt)).orderBy(desc(notes.updatedAt));
+  return rows.map(toNote);
+}
+
+/** Entries from the last 60 days, plus a timer that is still running however old. */
+export async function liveEntries(db: DB, days = 60): Promise<TimeEntry[]> {
+  const from = new Date(Date.now() - days * 864e5);
+  const rows = await db
+    .select()
+    .from(timeEntries)
+    .where(and(isNull(timeEntries.deletedAt), or(gt(timeEntries.startedAt, from), isNull(timeEntries.endedAt))))
+    .orderBy(asc(timeEntries.startedAt));
+  return rows.map(toEntry);
+}
+
 // ---------------------------------------------------------------- settings
 
 export async function ensureSettings(db: DB) {
@@ -211,8 +337,11 @@ export async function getLayout(db: DB): Promise<WinLayout[]> {
 
 export async function getState(db: DB): Promise<DeskState> {
   const cursor = await dbNow(db);
-  const [its, st, chat, layout] = [await liveItems(db), await getSettings(db), await listChat(db), await getLayout(db)];
-  return { items: its, settings: st, chat, layout, cursor: cursor.toISOString() };
+  const its = await liveItems(db);
+  const entries = await liveEntries(db);
+  const nts = await liveNotes(db);
+  const [st, chat, layout] = [await getSettings(db), await listChat(db), await getLayout(db)];
+  return { items: its, entries, notes: nts, settings: st, chat, layout, cursor: cursor.toISOString() };
 }
 
 /** Everything that changed since `since` — including deletions, so other devices drop them too. */
@@ -220,6 +349,8 @@ export async function getDelta(db: DB, since: Date): Promise<DeskDelta> {
   const cursor = await dbNow(db);
   const lower = new Date(since.getTime() - OVERLAP_MS);
   const changed = await db.select().from(items).where(gt(items.syncedAt, lower));
+  const changedEntries = await db.select().from(timeEntries).where(gt(timeEntries.syncedAt, lower));
+  const changedNotes = await db.select().from(notes).where(gt(notes.syncedAt, lower));
   const [s] = await db
     .select()
     .from(settings)
@@ -228,6 +359,8 @@ export async function getDelta(db: DB, since: Date): Promise<DeskDelta> {
   const chatChanged = newMsg.length > 0 || !!(s?.chatClearedAt && s.chatClearedAt > lower);
   return {
     items: changed.map(toItem),
+    entries: changedEntries.map(toEntry),
+    notes: changedNotes.map(toNote),
     settings: s ? toSettings(s) : null,
     chat: chatChanged ? await listChat(db) : null,
     cursor: cursor.toISOString(),
@@ -268,6 +401,8 @@ export async function exportAll(db: DB): Promise<Backup> {
     version: 1,
     exportedAt: new Date().toISOString(),
     items: all,
+    entries: (await db.select().from(timeEntries).orderBy(asc(timeEntries.startedAt))).map(toEntry),
+    notes: (await db.select().from(notes).orderBy(asc(notes.createdAt))).map(toNote),
     settings: { p1: st.p1, p2: st.p2, theme: st.theme, sound: st.sound },
     chat,
     layout: await getLayout(db),
@@ -280,7 +415,7 @@ export class ImportError extends Error {}
  * Restore a backup. Every item in the file is written as it is in the file (and wins over the
  * server's copy, including bringing back deleted ones). Items not in the file are left alone.
  */
-export async function importBackup(db: DB, raw: unknown): Promise<{ items: number; skipped: number }> {
+export async function importBackup(db: DB, raw: unknown): Promise<{ items: number; entries: number; notes: number; skipped: number }> {
   if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { items?: unknown }).items)) {
     throw new ImportError('Not a desk backup: expected an "items" list.');
   }
@@ -294,6 +429,30 @@ export async function importBackup(db: DB, raw: unknown): Promise<{ items: numbe
     else skipped++;
   }
   await pushItems(db, good, { force: true, now });
+
+  let entriesIn = 0;
+  if (Array.isArray((raw as { entries?: unknown }).entries)) {
+    const ok: TimeEntry[] = [];
+    for (const r of (raw as { entries: unknown[] }).entries) {
+      const p = EntryIn.safeParse(normalizeImportedEntry(r, now));
+      if (p.success) ok.push(p.data);
+      else skipped++;
+    }
+    await pushEntries(db, ok, { force: true, now });
+    entriesIn = ok.length;
+  }
+
+  let notesIn = 0;
+  if (Array.isArray((raw as { notes?: unknown }).notes)) {
+    const ok: Note[] = [];
+    for (const r of (raw as { notes: unknown[] }).notes) {
+      const p = NoteIn.safeParse(normalizeImportedEntry(r, now));
+      if (p.success) ok.push(p.data);
+      else skipped++;
+    }
+    await pushNotes(db, ok, { force: true, now });
+    notesIn = ok.length;
+  }
 
   const s = data.settings as { p1?: { name?: unknown; notes?: unknown }; p2?: { name?: unknown; notes?: unknown }; theme?: unknown; sound?: unknown } | undefined;
   if (s && typeof s === 'object') {
@@ -323,5 +482,5 @@ export async function importBackup(db: DB, raw: unknown): Promise<{ items: numbe
     if (ls.length) await putLayout(db, ls);
   }
 
-  return { items: good.length, skipped };
+  return { items: good.length, entries: entriesIn, notes: notesIn, skipped };
 }

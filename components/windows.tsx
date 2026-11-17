@@ -12,6 +12,7 @@ import {
 } from '@/lib/client/actions';
 import { ask, clearChat } from '@/lib/client/chat';
 import { flushDebounced } from '@/lib/client/debounce';
+import { useNow } from '@/lib/client/hooks';
 import { md } from '@/lib/client/markdown';
 import { byTime, onDay, overdue, tasks } from '@/lib/client/selectors';
 import { snd } from '@/lib/client/sound';
@@ -19,17 +20,12 @@ import { S, pname, setDesk, useDesk, type TodoFilter, type WinKey } from '@/lib/
 import { DOW, MON, TODAY, addD, fmtD, iso, pad, parse } from '@/lib/shared/dates';
 import type { Item, ItemType, ProjectKey } from '@/lib/shared/types';
 import { AutoNote } from './AutoNote';
+import { Notebook, NotebookFooter } from './Notebook';
 import { QuickAdd } from './QuickAdd';
 import { Row } from './Row';
+import { TimerFooter, TimerWin } from './TimerWin';
 
-/** Re-render every `ms` so greetings, "late" flags and "next" stay current. */
-export function useNow(ms = 60000) {
-  const [, setT] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setT((x) => x + 1), ms);
-    return () => clearInterval(t);
-  }, [ms]);
-}
+export { useNow };
 
 const useItems = () => {
   const items = useDesk((s) => s.items);
@@ -787,6 +783,10 @@ export function WindowBody({ k }: { k: WinKey }) {
       return <Chat />;
     case 'form':
       return <ItemForm />;
+    case 'timer':
+      return <TimerWin />;
+    case 'notes':
+      return <Notebook />;
   }
 }
 
@@ -864,6 +864,10 @@ export function WindowFooter({ k }: { k: WinKey }) {
           </button>
         </>
       );
+    case 'timer':
+      return <TimerFooter />;
+    case 'notes':
+      return <NotebookFooter />;
     default:
       return null;
   }

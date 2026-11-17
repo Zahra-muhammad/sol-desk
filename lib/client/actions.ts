@@ -7,18 +7,22 @@ import {
   type DeskState,
   type Item,
   type ItemType,
+  type Note,
+  type ProjectKey,
   type Settings,
   type SettingsPatch,
   type Theme,
+  type TimeEntry,
   type WinLayout,
 } from '@/lib/shared/types';
+import { running } from '@/lib/shared/time';
 import { api, post } from './api';
 import { debounced, flushAllDebounced } from './debounce';
 import { idbOutbox } from './idb';
 import { tasks } from './selectors';
 import { setSoundEnabled, snd } from './sound';
 import { S, setDesk, type Geo, type LockMode, type WinKey } from './store';
-import { SyncEngine, mergeItems, type Pending } from './sync';
+import { SyncEngine, mergeById, type Collection, type Pending } from './sync';
 
 // ---------------------------------------------------------------- windows
 
@@ -39,6 +43,8 @@ export const W: Record<WinKey, WinDef> = {
   p2: { n: 'p2', icon: 'dir', w: 400, h: 520 },
   future: { n: 'future.md', icon: 'file', w: 440, h: 540 },
   chat: { n: 'planner.chat', icon: 'app', w: 400, h: 540, flush: true },
+  timer: { n: 'timer.app', icon: 'app', w: 380, h: 560 },
+  notes: { n: 'notebook.md', icon: 'file', w: 600, h: 520, flush: true },
   form: { n: 'new.md', icon: 'file', w: 420, h: 'auto' },
 };
 
@@ -51,6 +57,8 @@ export const ICONS: [WinKey, string][] = [
   ['p2', ''],
   ['future', 'future'],
   ['chat', 'planner'],
+  ['timer', 'timer'],
+  ['notes', 'notebook'],
 ];
 
 export const iconLabel = (k: WinKey, s: Settings) => (k === 'p1' ? s.p1.name : k === 'p2' ? s.p2.name : ICONS.find((x) => x[0] === k)?.[1] ?? k);
@@ -82,6 +90,8 @@ export function defaultPos(k: WinKey): Geo {
     p2: [460, 120],
     future: [500, 50],
     chat: [Math.max(16, dw - 200 - 400), 70],
+    timer: [Math.max(16, dw - 200 - 380 - 40), 100],
+    notes: [Math.max(16, dw / 2 - 300), 60],
     form: [Math.max(16, dw / 2 - 210), 80],
   };
   const [x, y] = P[k];
@@ -255,16 +265,22 @@ export function deleteItem(id: string, silent = false) {
   setDesk((s) => {
     const items = { ...s.items };
     delete items[id];
-    return silent ? { items } : { items, lastDeleted: [it] };
+    return silent ? { items } : { items, lastDeleted: { kind: 'items' as const, recs: [it] } };
   });
   engine?.queueItem(tomb);
   if (!silent) toast('Deleted “' + it.title + '”', true);
 }
 
+/** Undo the last delete — items, tracked time or notes. */
 export function undoDelete() {
   const l = S().lastDeleted;
   if (!l) return;
-  l.forEach((x) => saveItem({ ...x, deletedAt: null }));
+  if (l.kind === 'items') (l.recs as Item[]).forEach((x) => saveItem({ ...x, deletedAt: null }));
+  if (l.kind === 'entries') (l.recs as TimeEntry[]).forEach((x) => saveRec('entries', { ...x, deletedAt: null }));
+  if (l.kind === 'notes') {
+    (l.recs as Note[]).forEach((x) => saveRec('notes', { ...x, deletedAt: null }));
+    setDesk({ noteSel: l.recs[0]?.id ?? null });
+  }
   setDesk({ lastDeleted: null });
   toast('Restored');
   snd('click');
@@ -277,7 +293,7 @@ export function clearDone() {
     return;
   }
   dn.forEach((x) => deleteItem(x.id, true));
-  setDesk({ lastDeleted: dn });
+  setDesk({ lastDeleted: { kind: 'items', recs: dn } });
   toast(`Cleared ${dn.length} finished to-do${dn.length > 1 ? 's' : ''}`, true);
   snd('del');
 }
@@ -332,6 +348,98 @@ export function addQuick(it: Item) {
   saveItem(it);
   snd('key');
   toast(`Added “${it.title}”${it.date ? ' · ' + fmtD(it.date) : ''}${it.time ? ' ' + it.time : ''}`);
+}
+
+// ---------------------------------------------------------------- time entries & notes (shared)
+
+type Rec<C extends 'entries' | 'notes'> = C extends 'entries' ? TimeEntry : Note;
+
+/** Save a time entry or note: on screen now, queued for the server. */
+export function saveRec<C extends 'entries' | 'notes'>(c: C, rec: Rec<C>): Rec<C> {
+  const prev = (S()[c] as Record<string, Rec<C>>)[rec.id];
+  const next = { ...rec, deletedAt: null, updatedAt: stamp(prev?.updatedAt ?? rec.updatedAt) } as Rec<C>;
+  setDesk((s) => ({ [c]: { ...(s[c] as Record<string, Rec<C>>), [rec.id]: next } }) as never);
+  engine?.queue(c, next as never);
+  return next;
+}
+
+/** Soft delete with Undo. */
+function deleteRec<C extends 'entries' | 'notes'>(c: C, id: string, label: string) {
+  const rec = (S()[c] as Record<string, Rec<C>>)[id];
+  if (!rec) return;
+  const t = stamp(rec.updatedAt);
+  setDesk((s) => {
+    const map = { ...(s[c] as Record<string, Rec<C>>) };
+    delete map[id];
+    return { [c]: map, lastDeleted: { kind: c as Collection, recs: [rec] } } as never;
+  });
+  engine?.queue(c, { ...rec, deletedAt: t, updatedAt: t } as never);
+  toast(label, true);
+  snd('del');
+}
+
+// ---------------------------------------------------------------- timer.app
+
+/** Start tracking. Stops whatever was running first — one timer at a time. */
+export function startTimer(label: string, project: ProjectKey | null) {
+  const now = new Date().toISOString();
+  stopTimer(true);
+  saveRec('entries', { id: uid(), label: label.trim(), project, startedAt: now, endedAt: null, createdAt: now, updatedAt: now, deletedAt: null });
+  setDesk({ timerLabel: label.trim(), timerProject: project ?? '' });
+  snd('key');
+}
+
+/** Stop every running timer (normally there is only one). */
+export function stopTimer(quiet = false) {
+  const now = new Date().toISOString();
+  const runningNow = Object.values(S().entries).filter((e) => !e.endedAt);
+  runningNow.forEach((e) => saveRec('entries', { ...e, endedAt: now }));
+  if (runningNow.length && !quiet) snd('click');
+}
+
+/** Rename / re-file the running timer while it runs. */
+export function updateRunning(p: Partial<Pick<TimeEntry, 'label' | 'project'>>) {
+  const r = running(Object.values(S().entries));
+  if (r) saveRec('entries', { ...r, ...p });
+}
+
+/** Start a new timer with the same label and project as an earlier one. */
+export function continueEntry(id: string) {
+  const e = S().entries[id];
+  if (e) startTimer(e.label, e.project);
+}
+
+export function deleteEntry(id: string) {
+  const e = S().entries[id];
+  if (e) deleteRec('entries', id, `Deleted “${e.label || 'untitled time'}”`);
+}
+
+// ---------------------------------------------------------------- notebook.md
+
+export function newNote() {
+  const now = new Date().toISOString();
+  const n = saveRec('notes', { id: uid(), title: '', body: '', createdAt: now, updatedAt: now, deletedAt: null });
+  setDesk({ noteSel: n.id, noteQ: '' });
+  openWin('notes');
+  snd('click');
+  setTimeout(() => (document.querySelector('#w-notes .ntitle') as HTMLInputElement | null)?.focus(), 40);
+}
+
+export function updateNote(id: string, p: Partial<Pick<Note, 'title' | 'body'>>) {
+  const n = S().notes[id];
+  if (!n) return;
+  const changed = (p.title !== undefined && p.title !== n.title) || (p.body !== undefined && p.body !== n.body);
+  if (changed) saveRec('notes', { ...n, ...p });
+}
+
+export function deleteNote(id: string) {
+  const n = S().notes[id];
+  if (!n) return;
+  const rest = Object.values(S().notes)
+    .filter((x) => x.id !== id)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  deleteRec('notes', id, `Deleted “${n.title.trim() || 'Untitled note'}”`);
+  setDesk({ noteSel: rest[0]?.id ?? null });
 }
 
 // ---------------------------------------------------------------- settings
@@ -499,6 +607,19 @@ function receiveSettings(incoming: Settings, pending: Pending) {
   setDesk({ settings: next });
 }
 
+/** Merge server copies of items, time entries and notes (newest wins; local unsaved edits are kept). */
+function receiveRecords(r: { items?: Item[]; entries?: TimeEntry[]; notes?: Note[] }, pending?: Pending) {
+  // Don't replace the note being typed in right now.
+  const typingNote = (document.activeElement as HTMLElement | null)?.closest?.('#w-notes .ned') ? S().noteSel : null;
+  const noteSkip = new Set(pending?.notes ?? []);
+  if (typingNote) noteSkip.add(typingNote);
+  setDesk((s) => ({
+    items: mergeById(s.items, r.items, pending?.items),
+    entries: mergeById(s.entries, r.entries, pending?.entries),
+    notes: mergeById(s.notes, r.notes, noteSkip),
+  }));
+}
+
 export function startSync(cursor: string) {
   if (engine) {
     engine.cursor = cursor;
@@ -511,13 +632,12 @@ export function startSync(cursor: string) {
       beacon: api.beacon,
       store: idbOutbox,
       onStatus: (saveStatus) => setDesk({ saveStatus }),
-      onPushed: (res) => {
-        const pending = engine!.pending();
-        setDesk((s) => ({ items: mergeItems(s.items, res.items, pending.items) }));
+      onPushed: (res, pending) => {
+        receiveRecords(res, pending);
         receiveSettings(res.settings, pending);
       },
       onPulled: (d, pending) => {
-        setDesk((s) => ({ items: mergeItems(s.items, d.items, pending.items) }));
+        receiveRecords(d, pending);
         if (d.settings) receiveSettings(d.settings, pending);
         if (d.chat && !S().chatBusy) setDesk({ chat: d.chat });
       },
@@ -538,6 +658,8 @@ export function loadState(state: DeskState, fresh: boolean) {
     ready: true,
     locked: false,
     items: Object.fromEntries(state.items.map((i) => [i.id, i])),
+    entries: Object.fromEntries((state.entries ?? []).map((x) => [x.id, x])),
+    notes: Object.fromEntries((state.notes ?? []).map((x) => [x.id, x])),
     settings: state.settings,
     chat: state.chat,
   });
@@ -556,8 +678,7 @@ export function loadState(state: DeskState, fresh: boolean) {
 
   // Re-apply anything queued on this device that never reached the server.
   void e.restore().then((ob) => {
-    const queued = Object.values(ob.items);
-    if (queued.length) setDesk((s) => ({ items: mergeItems(s.items, queued) }));
+    receiveRecords({ items: Object.values(ob.items), entries: Object.values(ob.entries), notes: Object.values(ob.notes) });
     if (Object.keys(ob.settings).length) setDesk((s) => ({ settings: applySettingsPatch(s.settings, ob.settings) }));
     if (!e.isEmpty()) void e.flush();
   });
@@ -603,7 +724,7 @@ export async function importBackup(file: File) {
   if (!window.confirm(`Import ${n} item${n === 1 ? '' : 's'} from “${file.name}”? Items with the same id are replaced by the backup's copy. Nothing else is removed.`)) return;
   flushAllDebounced();
   await engine?.flush();
-  const r = await post<{ items: number }>('/api/backup', data);
+  const r = await post<{ items: number; entries?: number; notes?: number }>('/api/backup', data);
   if (!r.ok) {
     if (r.status === 401) return onUnauthorized();
     toast(r.status === 400 ? 'That file isn’t a desk backup' : 'Couldn’t import — check your connection');
@@ -611,6 +732,7 @@ export async function importBackup(file: File) {
   }
   const st = await api.state();
   if (st.ok) loadState(st.data, false);
-  toast(`Imported ${r.data.items} item${r.data.items === 1 ? '' : 's'}`);
+  const extra = [r.data.entries && `${r.data.entries} time entr${r.data.entries === 1 ? 'y' : 'ies'}`, r.data.notes && `${r.data.notes} note${r.data.notes === 1 ? '' : 's'}`].filter(Boolean);
+  toast(`Imported ${r.data.items} item${r.data.items === 1 ? '' : 's'}${extra.length ? ', ' + extra.join(', ') : ''}`);
   snd('key');
 }

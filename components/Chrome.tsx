@@ -26,6 +26,7 @@ import { ask } from '@/lib/client/chat';
 import { snd } from '@/lib/client/sound';
 import { S, setDesk, useDesk, type WinKey } from '@/lib/client/store';
 import { DesktopIcon, Glyph, LockIcon, MailIcon, SpeakerOff, SpeakerOn, StartIcon, SunIcon, Thumb } from './Glyphs';
+import { TrayTimer } from './TimerWin';
 
 // Hover tick (mouse only), once per item entered.
 let lastHover: Element | null = null;
@@ -197,6 +198,12 @@ export function MenuBar({ ready }: { ready: boolean }) {
         >
           <MailIcon />
         </button>
+        <TrayTimer
+          onOpen={(e) => {
+            if (S().locked) return;
+            openFrom('timer', e);
+          }}
+        />
         <Clocks />
       </div>
     </div>

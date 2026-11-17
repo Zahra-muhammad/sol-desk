@@ -8,10 +8,12 @@ type Props = Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | '
   /** Unique per field; used to flush this field's pending save on blur / unload. */
   saveKey: string;
   onSave: (v: string) => void;
+  /** Render a single-line input instead of a textarea. */
+  single?: boolean;
 };
 
-/** A notes box that saves itself 700 ms after typing stops, on blur, and before the page unloads. */
-export function AutoNote({ value, saveKey, onSave, onFocus, onBlur, ...rest }: Props) {
+/** A text box that saves itself 700 ms after typing stops, on blur, and before the page unloads. */
+export function AutoNote({ value, saveKey, onSave, onFocus, onBlur, single, ...rest }: Props) {
   const [v, setV] = useState(value);
   const focused = useRef(false);
   const save = useRef(onSave);
@@ -22,24 +24,23 @@ export function AutoNote({ value, saveKey, onSave, onFocus, onBlur, ...rest }: P
     if (!focused.current && !hasDebounced(saveKey)) setV(value);
   }, [value, saveKey]);
 
-  return (
-    <textarea
-      {...rest}
-      value={v}
-      onChange={(e) => {
-        const nv = e.target.value;
-        setV(nv);
-        debounced(saveKey, () => save.current(nv), 700);
-      }}
-      onFocus={(e) => {
-        focused.current = true;
-        onFocus?.(e);
-      }}
-      onBlur={(e) => {
-        focused.current = false;
-        flushDebounced(saveKey);
-        onBlur?.(e);
-      }}
-    />
-  );
+  const common = {
+    value: v,
+    onChange: (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+      const nv = e.target.value;
+      setV(nv);
+      debounced(saveKey, () => save.current(nv), 700);
+    },
+    onFocus: (e: React.FocusEvent<HTMLTextAreaElement & HTMLInputElement>) => {
+      focused.current = true;
+      onFocus?.(e);
+    },
+    onBlur: (e: React.FocusEvent<HTMLTextAreaElement & HTMLInputElement>) => {
+      focused.current = false;
+      flushDebounced(saveKey);
+      onBlur?.(e);
+    },
+  };
+  if (single) return <input {...(rest as React.InputHTMLAttributes<HTMLInputElement>)} {...common} />;
+  return <textarea {...rest} {...common} />;
 }

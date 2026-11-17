@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { TODAY, iso } from '@/lib/shared/dates';
-import { DEFAULT_SETTINGS, type ChatMessage, type Item, type ProjectKey, type SavedWinKey, type Settings } from '@/lib/shared/types';
-import type { SaveStatus } from './sync';
+import { DEFAULT_SETTINGS, type ChatMessage, type Item, type Note, type ProjectKey, type SavedWinKey, type Settings, type TimeEntry } from '@/lib/shared/types';
+import type { Collection, SaveStatus } from './sync';
 
 export type WinKey = SavedWinKey | 'form';
 export type TodoFilter = 'open' | 'today' | 'week' | 'someday' | 'done';
@@ -26,6 +26,10 @@ export interface DeskStore {
   /** Data has been loaded from the server (never true before login). */
   ready: boolean;
   items: Record<string, Item>;
+  /** Tracked time (timer.app). */
+  entries: Record<string, TimeEntry>;
+  /** Notebook pages (notebook.md). */
+  notes: Record<string, Note>;
   settings: Settings;
   chat: ChatMessage[];
   live: ChatLive | null;
@@ -46,11 +50,18 @@ export interface DeskStore {
   selDay: string;
   todoF: TodoFilter;
   todoP: '' | ProjectKey;
+  /** Notebook: open page and search text. */
+  noteSel: string | null;
+  noteQ: string;
+  /** Timer: what the next timer is for. */
+  timerLabel: string;
+  timerProject: '' | ProjectKey;
 
   menu: string | null;
   startOpen: boolean;
   toast: { msg: string; undo: boolean; n: number } | null;
-  lastDeleted: Item[] | null;
+  /** What Undo brings back: the last thing deleted (items, time entries or notes). */
+  lastDeleted: { kind: Collection; recs: (Item | TimeEntry | Note)[] } | null;
 
   locked: boolean;
   lockMode: LockMode;
@@ -64,6 +75,8 @@ const now = new Date();
 export const initialDesk = (): DeskStore => ({
   ready: false,
   items: {},
+  entries: {},
+  notes: {},
   settings: DEFAULT_SETTINGS,
   chat: [],
   live: null,
@@ -80,6 +93,10 @@ export const initialDesk = (): DeskStore => ({
   selDay: TODAY(),
   todoF: 'open',
   todoP: '',
+  noteSel: null,
+  noteQ: '',
+  timerLabel: '',
+  timerProject: '',
   menu: null,
   startOpen: false,
   toast: null,

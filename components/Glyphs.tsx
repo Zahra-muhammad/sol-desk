@@ -179,6 +179,38 @@ export function Thumb({ k, style }: { k: WinKey; style?: React.CSSProperties }) 
         </>
       );
       break;
+    case 'timer':
+      // A stopwatch: cream face, green elapsed sector, red hand.
+      body = (
+        <>
+          <rect width="62" height="50" fill={BG} />
+          <rect x="28" y="4" width="6" height="5" rx="1.5" fill="#bbb" />
+          <rect x="42" y="8" width="5" height="4" rx="1.5" fill="#888" transform="rotate(40 44.5 10)" />
+          <circle cx="31" cy="28" r="16" fill="#f4f1ea" />
+          <path d="M31 28 L31 14 A14 14 0 0 1 44.3 23.7 Z" fill="#62ff8d" />
+          <circle cx="31" cy="28" r="16" fill="none" stroke="#2fd06a" strokeWidth="2.5" />
+          <line x1="31" y1="28" x2="38.5" y2="19.5" stroke="#ff4a3a" strokeWidth="2.2" strokeLinecap="round" />
+          <circle cx="31" cy="28" r="2.2" fill="#141414" />
+        </>
+      );
+      break;
+    case 'notes':
+      // A spiral notebook with a pink cover band and ruled lines.
+      body = (
+        <>
+          <rect width="62" height="50" fill="#2b2b2b" />
+          <rect x="14" y="6" width="34" height="40" rx="3" fill="#fff8e1" />
+          <rect x="14" y="6" width="34" height="9" rx="3" fill="#ff6fc1" />
+          <rect x="14" y="11" width="34" height="4" fill="#ff6fc1" />
+          {[0, 1, 2, 3].map((i) => (
+            <rect key={i} x="19" y={20 + i * 6} width={i === 3 ? 14 : 24} height="2" rx="1" fill="#c9c2ae" />
+          ))}
+          {[18, 24, 30, 36, 42].map((x) => (
+            <circle key={x} cx={x} cy="6" r="1.8" fill="#141414" />
+          ))}
+        </>
+      );
+      break;
     case 'chat':
       body = (
         <>

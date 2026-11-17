@@ -1,4 +1,4 @@
-import { emptyOutbox, type Outbox, type OutboxStore } from './sync';
+import { COLLECTIONS, emptyOutbox, type Outbox, type OutboxStore, type Synced } from './sync';
 
 // The outbox lives in IndexedDB so a change made offline (or one whose save failed)
 // survives a refresh, a crash or a closed tab. A localStorage copy is written
@@ -40,9 +40,12 @@ function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T
 
 function mergeInto(a: Outbox, b: Partial<Outbox> | null | undefined): Outbox {
   if (!b) return a;
-  for (const [id, it] of Object.entries(b.items || {})) {
-    const cur = a.items[id];
-    if (!cur || cur.updatedAt < it.updatedAt) a.items[id] = it;
+  for (const c of COLLECTIONS) {
+    const into = a[c] as Record<string, Synced>;
+    for (const [id, rec] of Object.entries((b[c] || {}) as Record<string, Synced>)) {
+      const cur = into[id];
+      if (!cur || cur.updatedAt < rec.updatedAt) into[id] = rec;
+    }
   }
   a.settings = { ...a.settings, ...(b.settings || {}) };
   a.layout = { ...a.layout, ...(b.layout || {}) };

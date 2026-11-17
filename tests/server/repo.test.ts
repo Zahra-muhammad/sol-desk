@@ -141,7 +141,7 @@ describe('export and import', () => {
     const other = await openDb('pglite:memory', { migrate: true });
     try {
       const res = await importBackup(other.db, backup);
-      expect(res).toEqual({ items: 2, skipped: 0 });
+      expect(res).toEqual({ items: 2, entries: 0, notes: 0, skipped: 0 });
       const st = await getState(other.db);
       expect(st.items.map((x) => x.title).sort()).toEqual(['Gym', 'Plan launch']);
       expect(st.items.find((x) => x.title === 'Plan launch')).toMatchObject({ date: '2026-12-01', project: 'p2', notes: 'n' });
@@ -179,7 +179,7 @@ describe('export and import', () => {
       settings: { p1: { name: 'Atlas', notes: '' }, p2: { name: 'Bloom', notes: 'hi' } },
     };
     const res = await importBackup(db, proto);
-    expect(res).toEqual({ items: 2, skipped: 1 });
+    expect(res).toEqual({ items: 2, entries: 0, notes: 0, skipped: 1 });
     const live = await liveItems(db);
     expect(live.find((x) => x.id === 'iabc123')).toMatchObject({ date: null, time: null, project: 'p2' });
     expect(live.find((x) => x.id === 'iabc124')).toMatchObject({ project: null, done: true });

@@ -29,12 +29,12 @@ describe('today.md footer', () => {
         if (!online) throw new TypeError('Failed to fetch');
         const body = init?.body ? JSON.parse(String(init.body)) : {};
         if (String(url).startsWith('/api/sync') && init?.method === 'POST') {
-          return new Response(JSON.stringify({ items: body.items ?? [], settings: DEFAULT_SETTINGS }), { status: 200 });
+          return new Response(JSON.stringify({ items: body.items ?? [], entries: body.entries ?? [], notes: body.notes ?? [], settings: DEFAULT_SETTINGS }), { status: 200 });
         }
-        return new Response(JSON.stringify({ items: [], settings: null, chat: null, cursor: new Date().toISOString() }), { status: 200 });
+        return new Response(JSON.stringify({ items: [], entries: [], notes: [], settings: null, chat: null, cursor: new Date().toISOString() }), { status: 200 });
       }),
     );
-    loadState({ items: [], settings: DEFAULT_SETTINGS, chat: [], layout: [], cursor: new Date().toISOString() }, false);
+    loadState({ items: [], entries: [], notes: [], settings: DEFAULT_SETTINGS, chat: [], layout: [], cursor: new Date().toISOString() }, false);
   });
 
   afterEach(() => {

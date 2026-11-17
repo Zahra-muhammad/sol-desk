@@ -1,7 +1,7 @@
 import 'server-only';
 import { z } from 'zod';
 import { ID_RE } from '@/lib/shared/ids';
-import { WINDOW_KEYS, type Item, type SettingsPatch, type WinLayout } from '@/lib/shared/types';
+import { WINDOW_KEYS, type Item, type Note, type SettingsPatch, type TimeEntry, type WinLayout } from '@/lib/shared/types';
 
 const isIso = (v: string) => !Number.isNaN(Date.parse(v));
 const isDay = (d: string) => {
@@ -50,6 +50,28 @@ export const ItemIn = z.object({
   deletedAt: ts.nullable().catch(null),
 }) satisfies z.ZodType<Item, unknown>;
 
+/** A tracked-time entry from the client. */
+export const EntryIn = z.object({
+  id: z.string().regex(ID_RE),
+  label: clip(300),
+  project: z.enum(['p1', 'p2']).nullable().catch(null),
+  startedAt: ts,
+  endedAt: ts.nullable().catch(null),
+  createdAt: ts.catch(() => new Date().toISOString()),
+  updatedAt: ts,
+  deletedAt: ts.nullable().catch(null),
+}) satisfies z.ZodType<TimeEntry, unknown>;
+
+/** A notebook page from the client. */
+export const NoteIn = z.object({
+  id: z.string().regex(ID_RE),
+  title: clip(300),
+  body: clip(200_000),
+  createdAt: ts.catch(() => new Date().toISOString()),
+  updatedAt: ts,
+  deletedAt: ts.nullable().catch(null),
+}) satisfies z.ZodType<Note, unknown>;
+
 const name = z
   .string()
   .transform((s) => s.trim().slice(0, 80) || 'untitled');
@@ -77,6 +99,8 @@ export const LayoutIn = z.object({
 
 export const PushIn = z.object({
   items: z.array(ItemIn).max(1000).optional(),
+  entries: z.array(EntryIn).max(1000).optional(),
+  notes: z.array(NoteIn).max(1000).optional(),
   settings: SettingsPatchIn.optional(),
   layout: z.array(LayoutIn).max(20).optional(),
 });
@@ -84,6 +108,12 @@ export const PushIn = z.object({
 export const PasswordIn = z.object({ password: z.string().min(1).max(1024) });
 export const ChangePasswordIn = z.object({ current: z.string().min(1).max(1024), next: z.string().max(1024).optional() });
 export const PlannerIn = z.object({ message: z.string().trim().min(1).max(4000) });
+
+/** Imported time entries and notes win over the server's copy, like imported items. */
+export function normalizeImportedEntry(raw: unknown, now: Date): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  return { ...(raw as Record<string, unknown>), updatedAt: now.toISOString() };
+}
 
 /**
  * Backups from this app, and the prototype's "Copy all my data" JSON

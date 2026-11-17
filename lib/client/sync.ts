@@ -1,4 +1,4 @@
-import type { DeskDelta, Item, PushBody, PushResult, SettingsPatch, WinLayout } from '@/lib/shared/types';
+import type { DeskDelta, Item, Note, PushBody, PushResult, SettingsPatch, TimeEntry, WinLayout } from '@/lib/shared/types';
 
 export type SaveStatus = 'saved' | 'saving' | 'error';
 
@@ -6,14 +6,28 @@ export type Result<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; error?: string; retryAfter?: number };
 
-/** Changes that haven't reached the server yet. Coalesced: one entry per item / setting / window. */
+/** Records that sync with "newest updatedAt wins" and soft deletes. */
+export type Synced = { id: string; updatedAt: string; deletedAt: string | null };
+
+/** The synced collections, keyed the same way in the outbox, push body and delta. */
+export const COLLECTIONS = ['items', 'entries', 'notes'] as const;
+export type Collection = (typeof COLLECTIONS)[number];
+export interface CollectionTypes {
+  items: Item;
+  entries: TimeEntry;
+  notes: Note;
+}
+
+/** Changes that haven't reached the server yet. Coalesced: one entry per record / setting / window. */
 export interface Outbox {
   items: Record<string, Item>;
+  entries: Record<string, TimeEntry>;
+  notes: Record<string, Note>;
   settings: SettingsPatch;
   layout: Record<string, WinLayout>;
 }
 
-export const emptyOutbox = (): Outbox => ({ items: {}, settings: {}, layout: {} });
+export const emptyOutbox = (): Outbox => ({ items: {}, entries: {}, notes: {}, settings: {}, layout: {} });
 
 export interface OutboxStore {
   load(): Promise<Outbox | null>;
@@ -29,7 +43,7 @@ export interface SyncDeps {
   beacon?(body: PushBody): void;
   store: OutboxStore;
   onStatus(s: SaveStatus): void;
-  onPushed(res: PushResult): void;
+  onPushed(res: PushResult, pending: Pending): void;
   onPulled(delta: DeskDelta, pending: Pending): void;
   onUnauthorized(): void;
   sleep?(ms: number): Promise<void>;
@@ -38,6 +52,8 @@ export interface SyncDeps {
 
 export interface Pending {
   items: Set<string>;
+  entries: Set<string>;
+  notes: Set<string>;
   settings: Set<string>;
 }
 
@@ -67,9 +83,12 @@ export class SyncEngine {
   async restore(): Promise<Outbox> {
     const saved = await this.d.store.load().catch(() => null);
     if (saved) {
-      for (const [id, it] of Object.entries(saved.items || {})) {
-        const cur = this.ob.items[id];
-        if (!cur || cur.updatedAt < it.updatedAt) this.ob.items[id] = it;
+      for (const c of COLLECTIONS) {
+        const into = this.ob[c] as Record<string, Synced>;
+        for (const [id, rec] of Object.entries((saved[c] || {}) as Record<string, Synced>)) {
+          const cur = into[id];
+          if (!cur || cur.updatedAt < rec.updatedAt) into[id] = rec;
+        }
       }
       this.ob.settings = { ...(saved.settings || {}), ...this.ob.settings };
       this.ob.layout = { ...(saved.layout || {}), ...this.ob.layout };
@@ -77,9 +96,14 @@ export class SyncEngine {
     return this.snapshotOutbox();
   }
 
-  queueItem(it: Item) {
-    this.ob.items[it.id] = it;
+  /** Queue a changed item, time entry or note. */
+  queue<C extends Collection>(c: C, rec: CollectionTypes[C]) {
+    (this.ob[c] as Record<string, Synced>)[rec.id] = rec;
     this.changed();
+  }
+
+  queueItem(it: Item) {
+    this.queue('items', it);
   }
 
   queueSettings(patch: SettingsPatch) {
@@ -93,15 +117,26 @@ export class SyncEngine {
   }
 
   isEmpty() {
-    return !Object.keys(this.ob.items).length && !Object.keys(this.ob.settings).length && !Object.keys(this.ob.layout).length;
+    return COLLECTIONS.every((c) => !Object.keys(this.ob[c]).length) && !Object.keys(this.ob.settings).length && !Object.keys(this.ob.layout).length;
   }
 
   pending(): Pending {
-    return { items: new Set(Object.keys(this.ob.items)), settings: new Set(Object.keys(this.ob.settings)) };
+    return {
+      items: new Set(Object.keys(this.ob.items)),
+      entries: new Set(Object.keys(this.ob.entries)),
+      notes: new Set(Object.keys(this.ob.notes)),
+      settings: new Set(Object.keys(this.ob.settings)),
+    };
   }
 
   snapshotOutbox(): Outbox {
-    return { items: { ...this.ob.items }, settings: { ...this.ob.settings }, layout: { ...this.ob.layout } };
+    return {
+      items: { ...this.ob.items },
+      entries: { ...this.ob.entries },
+      notes: { ...this.ob.notes },
+      settings: { ...this.ob.settings },
+      layout: { ...this.ob.layout },
+    };
   }
 
   /** Push everything queued. Retries once after 0.5–1 s; after that the change stays queued and status is "error". */
@@ -170,8 +205,10 @@ export class SyncEngine {
 
   private bodyOf(ob: Outbox): PushBody {
     const body: PushBody = {};
-    const items = Object.values(ob.items);
-    if (items.length) body.items = items;
+    for (const c of COLLECTIONS) {
+      const list = Object.values(ob[c]);
+      if (list.length) (body as Record<string, unknown>)[c] = list;
+    }
     if (Object.keys(ob.settings).length) body.settings = ob.settings;
     const layout = Object.values(ob.layout);
     if (layout.length) body.layout = layout;
@@ -187,12 +224,15 @@ export class SyncEngine {
 
       // Snapshot by reference so edits made during the request aren't lost.
       const all = this.snapshotOutbox();
-      const ids = Object.keys(all.items).slice(0, MAX_BATCH);
-      const snap: Outbox = {
-        items: Object.fromEntries(ids.map((id) => [id, all.items[id]])),
-        settings: all.settings,
-        layout: all.layout,
-      };
+      const snap: Outbox = { ...all };
+      let room = MAX_BATCH;
+      for (const c of COLLECTIONS) {
+        const ids = Object.keys(all[c]).slice(0, Math.max(0, room));
+        room -= ids.length;
+        (snap as unknown as Record<Collection, Record<string, Synced>>)[c] = Object.fromEntries(
+          ids.map((id) => [id, (all[c] as Record<string, Synced>)[id]]),
+        );
+      }
       const body = this.bodyOf(snap);
 
       this.setStatus('saving');
@@ -207,27 +247,29 @@ export class SyncEngine {
         return;
       }
 
-      for (const [id, it] of Object.entries(snap.items)) if (this.ob.items[id] === it) delete this.ob.items[id];
+      for (const c of COLLECTIONS) {
+        const live = this.ob[c] as Record<string, Synced>;
+        for (const [id, rec] of Object.entries(snap[c] as Record<string, Synced>)) if (live[id] === rec) delete live[id];
+      }
       for (const [k, v] of Object.entries(snap.settings)) {
         if ((this.ob.settings as Record<string, unknown>)[k] === v) delete (this.ob.settings as Record<string, unknown>)[k];
       }
       for (const [k, v] of Object.entries(snap.layout)) if (this.ob.layout[k] === v) delete this.ob.layout[k];
       this.persist();
-      this.d.onPushed(r.data);
+      this.d.onPushed(r.data, this.pending());
     } while (this.again || (!this.isEmpty() && !this.paused));
 
     if (this.isEmpty()) this.setStatus('saved');
   }
 }
 
-/** Newest `updatedAt` wins. Returns the merged map (new object only if something changed). */
-export function mergeItems(
-  current: Record<string, Item>,
-  incoming: Item[],
-  skip?: Set<string>,
-): Record<string, Item> {
+/**
+ * Newest `updatedAt` wins. Works for items, time entries and notes.
+ * Returns the merged map (a new object only if something changed).
+ */
+export function mergeById<T extends Synced>(current: Record<string, T>, incoming: T[] | undefined, skip?: Set<string>): Record<string, T> {
   let next = current;
-  for (const it of incoming) {
+  for (const it of incoming ?? []) {
     if (skip?.has(it.id)) continue;
     const cur = current[it.id];
     if (cur && cur.updatedAt > it.updatedAt) continue;
@@ -236,7 +278,7 @@ export function mergeItems(
       if (next === current) next = { ...current };
       delete next[it.id];
     } else {
-      if (cur && sameItem(cur, it)) continue;
+      if (cur && cur.updatedAt === it.updatedAt && JSON.stringify(cur) === JSON.stringify(it)) continue;
       if (next === current) next = { ...current };
       next[it.id] = it;
     }
@@ -244,19 +286,5 @@ export function mergeItems(
   return next;
 }
 
-function sameItem(a: Item, b: Item) {
-  return (
-    a.updatedAt === b.updatedAt &&
-    a.title === b.title &&
-    a.done === b.done &&
-    a.date === b.date &&
-    a.time === b.time &&
-    a.notes === b.notes &&
-    a.project === b.project &&
-    a.type === b.type &&
-    a.month === b.month &&
-    a.dur === b.dur &&
-    a.with === b.with &&
-    a.link === b.link
-  );
-}
+/** Kept for readability at call sites that deal only with items. */
+export const mergeItems = mergeById<Item>;

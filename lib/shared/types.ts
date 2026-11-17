@@ -61,7 +61,30 @@ export interface ChatMessage {
   createdAt: string;
 }
 
-export const WINDOW_KEYS = ['today', 'calendar', 'meetings', 'todo', 'p1', 'p2', 'future', 'chat'] as const;
+/** One block of tracked time. endedAt = null while the timer is running. Syncs like items. */
+export interface TimeEntry {
+  id: string;
+  /** What you were working on. */
+  label: string;
+  project: ProjectKey | null;
+  startedAt: string;
+  endedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+/** A notebook page. Syncs like items (newest edit wins, soft delete). */
+export interface Note {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export const WINDOW_KEYS = ['today', 'calendar', 'meetings', 'todo', 'p1', 'p2', 'future', 'chat', 'timer', 'notes'] as const;
 export type SavedWinKey = (typeof WINDOW_KEYS)[number];
 
 export interface WinLayout {
@@ -78,6 +101,9 @@ export interface WinLayout {
 /** Everything the desk needs on load. */
 export interface DeskState {
   items: Item[];
+  /** Time entries from the last 60 days, plus any running timer. */
+  entries: TimeEntry[];
+  notes: Note[];
   settings: Settings;
   chat: ChatMessage[];
   layout: WinLayout[];
@@ -88,6 +114,9 @@ export interface DeskState {
 export interface DeskDelta {
   /** Changed items, including soft-deleted ones (deletedAt set). */
   items: Item[];
+  /** Changed time entries and notes, including soft-deleted ones. */
+  entries: TimeEntry[];
+  notes: Note[];
   settings: Settings | null;
   /** Full recent chat, only when it changed. */
   chat: ChatMessage[] | null;
@@ -96,6 +125,8 @@ export interface DeskDelta {
 
 export interface PushBody {
   items?: Item[];
+  entries?: TimeEntry[];
+  notes?: Note[];
   settings?: SettingsPatch;
   layout?: WinLayout[];
 }
@@ -103,6 +134,8 @@ export interface PushBody {
 export interface PushResult {
   /** The server's copy of every pushed item after newest-wins was applied. */
   items: Item[];
+  entries: TimeEntry[];
+  notes: Note[];
   settings: Settings;
 }
 
@@ -111,6 +144,8 @@ export interface Backup {
   version: 1;
   exportedAt: string;
   items: Item[];
+  entries: TimeEntry[];
+  notes: Note[];
   settings: Omit<Settings, 'updatedAt'>;
   chat: ChatMessage[];
   layout: WinLayout[];

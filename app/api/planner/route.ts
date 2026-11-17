@@ -10,7 +10,7 @@ import {
   plannerWindow,
   toolItemsToItems,
 } from '@/lib/server/planner';
-import { addChat, getSettings, listChat, plannerItems, pushItems } from '@/lib/server/repo';
+import { addChat, getSettings, listChat, liveEntries, liveNotes, plannerItems, pushItems } from '@/lib/server/repo';
 import { PlannerIn } from '@/lib/server/validate';
 
 export const dynamic = 'force-dynamic';
@@ -50,6 +50,7 @@ export const POST = handle(async (req: Request) => {
   const model = process.env.ANTHROPIC_MODEL || DEFAULT_MODEL;
   const w = plannerWindow();
   const [settings, items, history] = [await getSettings(db), await plannerItems(db, w.day, w.from, w.to), await listChat(db, 12)];
+  const [entries, notebook] = [await liveEntries(db, 7), (await liveNotes(db)).slice(0, 10)];
 
   // History as plain text turns; it must start with a user turn.
   const past: Anthropic.Beta.BetaMessageParam[] = history.map((m) => ({ role: m.role, content: m.content || '…' }));
@@ -57,7 +58,7 @@ export const POST = handle(async (req: Request) => {
   const messages: Anthropic.Beta.BetaMessageParam[] = [...past, { role: 'user', content: message }];
   const system: Anthropic.Beta.BetaTextBlockParam[] = [
     { type: 'text', text: SYSTEM_PROMPT },
-    { type: 'text', text: contextBlock(items, settings) },
+    { type: 'text', text: contextBlock(items, settings, new Date(), { entries, notes: notebook }) },
   ];
 
   const client = new Anthropic();

@@ -39,6 +39,42 @@ export const items = pgTable(
   ],
 );
 
+/** Tracked time. ended_at is null while the timer runs. Same newest-wins / soft-delete rules as items. */
+export const timeEntries = pgTable(
+  'time_entries',
+  {
+    id: text('id').primaryKey(),
+    label: text('label').notNull().default(''),
+    project: text('project', { enum: ['p1', 'p2'] }),
+    startedAt: tz('started_at').notNull(),
+    endedAt: tz('ended_at'),
+    createdAt: tz('created_at').notNull().defaultNow(),
+    updatedAt: tz('updated_at').notNull().defaultNow(),
+    deletedAt: tz('deleted_at'),
+    syncedAt: tz('synced_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('time_entries_synced_at_idx').on(t.syncedAt),
+    index('time_entries_started_at_idx').on(t.startedAt),
+    check('time_entries_project_check', sql`${t.project} is null or ${t.project} in ('p1', 'p2')`),
+  ],
+);
+
+/** Notebook pages. Same newest-wins / soft-delete rules as items. */
+export const notes = pgTable(
+  'notes',
+  {
+    id: text('id').primaryKey(),
+    title: text('title').notNull().default(''),
+    body: text('body').notNull().default(''),
+    createdAt: tz('created_at').notNull().defaultNow(),
+    updatedAt: tz('updated_at').notNull().defaultNow(),
+    deletedAt: tz('deleted_at'),
+    syncedAt: tz('synced_at').notNull().defaultNow(),
+  },
+  (t) => [index('notes_synced_at_idx').on(t.syncedAt), index('notes_updated_at_idx').on(t.updatedAt)],
+);
+
 /** One row: project names and notes, theme, sound. */
 export const settings = pgTable(
   'settings',
