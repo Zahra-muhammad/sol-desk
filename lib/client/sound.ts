@@ -1,9 +1,13 @@
-// Soft, Mac-like UI sounds — trackpad taps, little pops and glassy tinks, all quiet.
-// Pure Web Audio, no files. Recipes are the prototype's.
+// Mechanical "tick" clicks — like a mechanical keyboard key or a light switch.
+// Pure Web Audio, no files. Each click = a low sine "thump" (BODY) + a band-passed noise "snap" (SNAP).
 
-let AC: AudioContext | null = null;
-let MS: GainNode | null = null;
+let audioCtx: AudioContext | null = null;
+let master: GainNode | null = null;
 let enabled = true;
+let lastAt = -Infinity;
+
+/** Never let sounds stack into a buzz: at most one sound per 30 ms. */
+const MIN_GAP_MS = 30;
 
 export function setSoundEnabled(v: boolean) {
   enabled = v;
@@ -12,110 +16,120 @@ export function soundEnabled() {
   return enabled;
 }
 
-function ac(): AudioContext | null {
+function ctx(): AudioContext | null {
   if (typeof window === 'undefined') return null;
-  if (!AC) {
+  if (!audioCtx) {
     try {
       const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      AC = new Ctor();
-      const c = AC.createDynamicsCompressor();
-      c.threshold.value = -24;
-      c.ratio.value = 3;
-      MS = AC.createGain();
-      MS.gain.value = 0.55;
-      MS.connect(c).connect(AC.destination);
+      audioCtx = new Ctor();
+      master = audioCtx.createGain();
+      master.gain.value = 0.8;
+      master.connect(audioCtx.destination);
     } catch {
       return null;
     }
   }
-  if (AC.state === 'suspended') AC.resume().catch(() => {});
-  return AC;
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  return audioCtx;
 }
 
-/** Browsers block audio until a gesture; call on the first pointerdown. */
+/** Browsers block audio until a gesture; called on the first click. */
 export function primeAudio() {
-  ac();
+  ctx();
 }
 
-interface PingOpts {
-  delay?: number;
-  lp?: number;
-  type?: OscillatorType;
-  to?: number;
-  att?: number;
-}
-
-function ping(f: number, dur: number, vol: number, o: PingOpts = {}) {
-  const a = ac();
-  if (!a || !MS) return;
-  const t = a.currentTime + 0.004 + (o.delay || 0);
-  const osc = a.createOscillator();
+/**
+ * One mechanical click.
+ * @param freq   body pitch in Hz (starts at 1.7× and drops to this within 12 ms)
+ * @param snapHz band-pass centre for the noise snap
+ * @param decay  length in seconds
+ * @param vol    loudness
+ * @param delay  start offset in seconds
+ */
+function click(freq: number, snapHz: number, decay: number, vol: number, delay = 0) {
+  const a = ctx();
+  if (!a || !master) return;
+  const t = a.currentTime + delay + 0.005;
+  // body
+  const o = a.createOscillator();
   const g = a.createGain();
-  const lp = a.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.value = o.lp || 5200;
-  osc.type = o.type || 'sine';
-  osc.frequency.setValueAtTime(f, t);
-  if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + dur * 0.55);
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + (o.att || 0.003));
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  osc.connect(lp).connect(g).connect(MS);
-  osc.start(t);
-  osc.stop(t + dur + 0.02);
-}
-
-/** "Trackpad tap": 12 ms noise burst through a 3.2 kHz band-pass, plus a tiny 1850 Hz sine. */
-function tap(vol = 1, delay = 0) {
-  const a = ac();
-  if (!a || !MS) return;
-  const t = a.currentTime + 0.004 + delay;
-  const len = Math.floor(a.sampleRate * 0.012);
-  const b = a.createBuffer(1, len, a.sampleRate);
-  const d = b.getChannelData(0);
-  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 6);
+  o.type = 'sine';
+  o.frequency.setValueAtTime(freq * 1.7, t);
+  o.frequency.exponentialRampToValueAtTime(freq, t + 0.012);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+  o.connect(g).connect(master);
+  o.start(t);
+  o.stop(t + decay + 0.03);
+  // snap
+  const len = Math.floor(a.sampleRate * decay);
+  const buf = a.createBuffer(1, len, a.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4);
   const n = a.createBufferSource();
   const bp = a.createBiquadFilter();
-  const lp = a.createBiquadFilter();
-  const g = a.createGain();
-  n.buffer = b;
+  const ng = a.createGain();
+  n.buffer = buf;
   bp.type = 'bandpass';
-  bp.frequency.value = 3200;
-  bp.Q.value = 2.2;
-  lp.type = 'lowpass';
-  lp.frequency.value = 5200;
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.16 * vol, t + 0.003);
-  n.connect(bp).connect(lp).connect(g).connect(MS);
+  bp.frequency.value = snapHz;
+  bp.Q.value = 1.1;
+  ng.gain.value = vol * 0.9;
+  n.connect(bp).connect(ng).connect(master);
   n.start(t);
-  ping(1850, 0.022, 0.035 * vol, { delay });
 }
 
 export type Snd = 'click' | 'tick' | 'open' | 'close' | 'key' | 'unkey' | 'msg' | 'del' | 'err' | 'unlock';
 
+/** The sound map. */
+const MAP: Record<Snd, () => void> = {
+  // buttons, icons, menus
+  click: () => click(180, 4600, 0.04, 0.35),
+  // hover, tabs, drag start/end
+  tick: () => click(150, 2600, 0.014, 0.18),
+  open: () => click(230, 5400, 0.045, 0.32),
+  close: () => click(130, 3600, 0.05, 0.32),
+  // to-do done: key press down, then up
+  key: () => {
+    click(110, 3000, 0.035, 0.42);
+    click(210, 5600, 0.03, 0.25, 0.07);
+  },
+  unkey: () => click(160, 4200, 0.03, 0.3),
+  del: () => {
+    click(120, 2400, 0.06, 0.35);
+    click(90, 1800, 0.05, 0.25, 0.06);
+  },
+  // Not in the reference map — made in the same click style:
+  // planner replied: two light clicks
+  msg: () => {
+    click(200, 5000, 0.03, 0.22);
+    click(240, 5600, 0.03, 0.2, 0.085);
+  },
+  // wrong password: two low, dull clicks
+  err: () => {
+    click(120, 2000, 0.05, 0.3);
+    click(100, 1800, 0.05, 0.25, 0.09);
+  },
+  // unlocked: three rising clicks, 70 ms apart
+  unlock: () => {
+    click(180, 4600, 0.035, 0.25);
+    click(230, 5200, 0.035, 0.25, 0.07);
+    click(280, 5800, 0.035, 0.25, 0.14);
+  },
+};
+
 export function snd(k: Snd) {
   if (!enabled) return;
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  if (now - lastAt < MIN_GAP_MS) return;
+  lastAt = now;
   try {
-    if (k === 'click') tap(1);
-    else if (k === 'tick') tap(0.55);
-    else if (k === 'open') ping(620, 0.07, 0.07, { to: 1180 });
-    else if (k === 'close') ping(980, 0.07, 0.06, { to: 520 });
-    else if (k === 'key') {
-      tap(0.8);
-      ping(2093, 0.22, 0.045, { delay: 0.02 });
-      ping(3136, 0.16, 0.02, { delay: 0.02 });
-    } else if (k === 'unkey') tap(0.7);
-    else if (k === 'msg') {
-      ping(1319, 0.2, 0.04);
-      ping(1760, 0.24, 0.04, { delay: 0.085 });
-    } else if (k === 'del') ping(440, 0.11, 0.055, { to: 240, type: 'triangle', lp: 2200 });
-    else if (k === 'err') {
-      ping(196, 0.16, 0.06, { type: 'triangle', lp: 900 });
-      ping(165, 0.18, 0.05, { type: 'triangle', lp: 900, delay: 0.09 });
-    } else if (k === 'unlock') {
-      [880, 1175, 1568].forEach((f, i) => ping(f, 0.22, 0.04, { delay: i * 0.07 }));
-    }
+    MAP[k]();
   } catch {
-    /* audio is a nicety; never let it break a click */
+    /* sound is a nicety; never let it break a click */
   }
+}
+
+/** Hover tick for mouse users only (touch has no hover). */
+export function hoverTick(e: { pointerType?: string }) {
+  if (e.pointerType === 'mouse') snd('tick');
 }
