@@ -35,6 +35,7 @@ The first visit shows **Choose a password**. Type a 4-number code twice (like a 
 | Variable | Required | What it is |
 |---|---|---|
 | `DATABASE_URL` | yes | A Postgres connection string from Neon or Supabase. On Vercel, use the **pooled** URL. For local use only, `pglite:./.data/pglite` runs an embedded Postgres in a folder. |
+| `DATABASE_URL_UNPOOLED` | no | Neon's direct (unpooled) connection string. If it's set, `npm run db:migrate` uses it for schema changes, as Neon recommends. |
 | `SESSION_SECRET` | yes | A random string of at least 32 characters. Session tokens are stored as an HMAC under this key. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Changing it signs out every device. |
 | `ANTHROPIC_API_KEY` | for the planner | Read only on the server and never sent to the browser. Without it, planner.chat says the key is missing. |
 | `ANTHROPIC_MODEL` | no | Defaults to `claude-sonnet-5-5`. |
@@ -42,7 +43,7 @@ The first visit shows **Choose a password**. Type a 4-number code twice (like a 
 ## Database and migrations
 
 - The schema is in `lib/server/db/schema.ts` (Drizzle ORM). The SQL migrations are in `drizzle/` and are checked in.
-- **Apply migrations:** `npm run db:migrate` runs them against `DATABASE_URL`.
+- **Apply migrations:** `npm run db:migrate` runs them against `DATABASE_URL_UNPOOLED` if it's set, otherwise `DATABASE_URL`.
 - **After changing the schema:** run `npm run db:generate`, then commit the new file in `drizzle/`.
 - An embedded `pglite:` database migrates itself when the app starts.
 - **On Vercel**, the `vercel-build` script runs the migrations before `next build`, so every deploy brings the database up to date.
@@ -61,9 +62,17 @@ The tables are:
 
 1. Create a Postgres database on [Neon](https://neon.tech) or [Supabase](https://supabase.com) and copy its **pooled** connection string.
 2. Push this repo to GitHub and import it into Vercel. The framework preset is Next.js, and the defaults are fine.
-3. In **Project → Settings → Environment Variables**, add `DATABASE_URL`, `SESSION_SECRET`, `ANTHROPIC_API_KEY` and, if you like, `ANTHROPIC_MODEL`.
+3. In **Project → Settings → Environment Variables**, add `DATABASE_URL`, `SESSION_SECRET`, `ANTHROPIC_API_KEY` and, if you like, `DATABASE_URL_UNPOOLED` and `ANTHROPIC_MODEL`. Under **Settings → Functions**, set the region to match the database, for example Frankfurt (`fra1`) for a Neon project in `aws-eu-central-1`.
 4. Deploy. The build applies the migrations.
 5. **Open the site straight away and choose your password.** Until a password exists, whoever opens the site first gets to set it.
+
+## Neon tooling in this repo
+
+This folder is linked to the Neon project `super-hat-06317854` (branch `production`, Frankfurt). The link is stored in a git-ignored `.neon` file.
+
+- `neon env pull --file <file>` fetches the connection strings again. Without `--file`, it writes into `.env.local`, so pass a separate file and copy over only the lines you need.
+- **Claude Code skills:** `.claude/skills/neon` and `.claude/skills/neon-postgres`, recorded in `skills-lock.json`. Check them with `neon skills status` and update them with `neon skills update`. These commands need Node.js 22.20 or newer.
+- **Neon MCP server:** `.mcp.json` registers `https://mcp.neon.tech/mcp` with OAuth, so the file holds no keys. Claude Code asks you to approve it and sign in to Neon the first time it's used.
 
 ## Forgot the password? Reset it
 

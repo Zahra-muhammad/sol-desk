@@ -5,7 +5,7 @@ import { migrationsFolder, openDb, type DB } from './connect';
 
 export type { DB };
 
-const g = globalThis as unknown as { __solDb?: Promise<DB>; __solMigrations?: number };
+const g = globalThis as unknown as { __solDb?: Promise<DB>; __solMigrations?: number; __solDbUrl?: string };
 
 /** How many migrations exist on disk — changes when a new one is added while `next dev` is running. */
 function migrationCount(): number {
@@ -25,6 +25,10 @@ function migrationCount(): number {
 export function getDb(): Promise<DB> {
   const url = process.env.DATABASE_URL;
   const embedded = !!url?.startsWith('pglite:');
+
+  // DATABASE_URL changed while the server is running (e.g. .env.local switched to Neon): reconnect.
+  if (g.__solDb && g.__solDbUrl !== url) g.__solDb = undefined;
+  g.__solDbUrl = url;
 
   if (g.__solDb && embedded) {
     const n = migrationCount();
