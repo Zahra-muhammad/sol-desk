@@ -10,9 +10,12 @@ export const metadata: Metadata = {
   title: 'sol — desk',
   description: 'A private planner.',
   robots: { index: false, follow: false },
+  // Installed on an iPhone home screen it opens full-screen, under a translucent status bar.
+  appleWebApp: { capable: true, title: 'sol', statusBarStyle: 'black-translucent' },
 };
 
-export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
+// viewportFit cover: draw under the notch / home bar; the CSS keeps controls inside the safe areas.
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover', themeColor: '#121212' };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // The theme is mirrored in a cookie so the lock screen is already the right colour before login.

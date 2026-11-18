@@ -66,6 +66,42 @@ The tables are:
 4. Deploy. The build applies the migrations.
 5. **Open the site straight away and choose your password.** Until a password exists, whoever opens the site first gets to set it.
 
+## iPhone app
+
+There are two ways to use sol — desk on an iPhone. Both run the same app with the same login and data.
+
+### 1. Home-screen app (free, works now)
+
+1. On the iPhone, open your desk's production address in **Safari**.
+2. Tap **Share**, then **Add to Home Screen**, then **Add**.
+
+It opens full-screen with its own icon, fits around the notch and home bar, and updates whenever Vercel deploys. Log in once with your 4-number password. The home-screen app has its own login, separate from Safari.
+
+The one limit: alarms ring only while the app is open, because iOS doesn't let home-screen web apps schedule alarms.
+
+### 2. Real iOS app (TestFlight), built in the cloud without a Mac
+
+The `ios/` folder is a native app made with [Capacitor](https://capacitorjs.com). It's a native shell that loads your live desk. On top of that, it hands every upcoming alarm to iOS as a notification, so **alarms ring even when the app is closed**.
+
+What you need:
+- An **Apple Developer account** ($99 a year, [developer.apple.com/programs](https://developer.apple.com/programs/)).
+- A free **[Codemagic](https://codemagic.io)** account. It builds the app on a cloud Mac.
+
+One-time setup:
+1. **App Store Connect → Apps → +**: create an app with the bundle ID `com.soldesk.planner`. If you change the ID, change it in `capacitor.config.js` and `codemagic.yaml` too.
+2. **App Store Connect → Users and Access → Integrations → App Store Connect API**: create a key with the **App Manager** role, then download the `.p8` file.
+3. **Codemagic**:
+   - Add the repo.
+   - Under **Team settings → Integrations → Developer Portal**, add the API key and name it `sol-asc-key`.
+   - Under **Environment variables**, add `CAP_SERVER_URL`, your production address (for example `https://….vercel.app`).
+4. Start the **sol — iOS → TestFlight** workflow, or push to `main` to start it. When it's done, install the **TestFlight** app on your iPhone and install **sol** from there.
+
+The address must open without Vercel's login wall. If it shows "Protected by Vercel Authentication", use your production domain (**Vercel → Settings → Domains**), or relax **Settings → Deployment Protection** for production.
+
+Commands:
+- `npm run icons` regenerates the app icon, the iOS icon and the launch screen.
+- `npm run ios:sync` copies config changes into the iOS project. Set `CAP_SERVER_URL` in `.env.local` first.
+
 ## Neon tooling in this repo
 
 This folder is linked to the Neon project `super-hat-06317854` (branch `production`, Frankfurt). The link is stored in a git-ignored `.neon` file.

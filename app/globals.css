@@ -303,3 +303,21 @@ textarea.nbody{flex:1;min-height:220px;resize:none;margin-top:4px;font-size:14px
 #ring .ra{display:flex;gap:8px}
 #ring .ra .btn{flex:1}
 @keyframes rshake{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(-14deg)}20%,40%{transform:rotate(14deg)}}
+
+/* ---- iPhone / home-screen app: stay clear of the notch, Dynamic Island and home bar.
+   env(safe-area-inset-*) is 0 on desktops and in normal browser tabs, so nothing moves there. ---- */
+#menu{height:calc(34px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right))}
+#desk{inset:calc(34px + env(safe-area-inset-top)) 0 calc(46px + env(safe-area-inset-bottom))}
+#task{height:calc(46px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);padding-left:max(8px,env(safe-area-inset-left));padding-right:max(8px,env(safe-area-inset-right))}
+#startm{bottom:calc(52px + env(safe-area-inset-bottom))}
+#toast{bottom:calc(60px + env(safe-area-inset-bottom))}
+#restore{top:calc(46px + env(safe-area-inset-top))}
+#xbig{top:calc(50px + env(safe-area-inset-top))}
+#ring{top:calc(52px + env(safe-area-inset-top))}
+#lock{padding-top:calc(9vh + env(safe-area-inset-top));padding-bottom:calc(7vh + env(safe-area-inset-bottom))}
+/* The status bar text is white (black-translucent); in the light theme keep a dark strip behind it. */
+:root.lite #menu{background:linear-gradient(#121212 0 env(safe-area-inset-top),var(--bar) 0)}
+html,body{overscroll-behavior:none}
+button,a,.row{-webkit-tap-highlight-color:transparent}
+/* iOS zooms into text fields smaller than 16px; keep phones from jumping. */
+@media (pointer:coarse){.in,.qa input,select.in,textarea.in{font-size:16px}}

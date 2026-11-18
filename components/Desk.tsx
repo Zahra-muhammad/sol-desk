@@ -18,7 +18,7 @@ import { primeAudio, setSoundEnabled } from '@/lib/client/sound';
 import { S, setDesk, useDesk, type LockMode } from '@/lib/client/store';
 import { TODAY } from '@/lib/shared/dates';
 import type { DeskState } from '@/lib/shared/types';
-import { AlarmRinger } from './AlarmsWin';
+import { AlarmRinger, NativeAlarmSync } from './AlarmsWin';
 import { Ascii } from './Ascii';
 import { DesktopIcons, MenuBar, RestorePill, StartMenu, Taskbar, Toast, XBig, hoverProps } from './Chrome';
 import { LockScreen } from './LockScreen';
@@ -169,6 +169,7 @@ export function Desk({ mode, initial, detail }: { mode: DeskMode; initial: DeskS
       <StartMenu ready={show} />
       <LockScreen />
       <AlarmRinger />
+      <NativeAlarmSync />
       <Toast />
     </>
   );

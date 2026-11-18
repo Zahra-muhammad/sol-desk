@@ -266,3 +266,17 @@ export function AlarmRinger() {
     </div>
   );
 }
+
+/** In the iOS app: keep iOS notifications in step with alarms, so they ring even when the app is closed. */
+export function NativeAlarmSync() {
+  const map = useDesk((s) => s.alarms);
+  const ready = useDesk((s) => s.ready);
+  useEffect(() => {
+    if (!ready) return;
+    const t = setTimeout(() => {
+      void import('@/lib/client/native').then((n) => n.syncNativeAlarms(Object.values(map))).catch(() => {});
+    }, 800);
+    return () => clearTimeout(t);
+  }, [map, ready]);
+  return null;
+}
