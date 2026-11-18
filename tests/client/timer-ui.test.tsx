@@ -16,7 +16,7 @@ beforeEach(() => {
       return new Response(JSON.stringify({ items: [], entries: body.entries ?? [], notes: [], settings: DEFAULT_SETTINGS }));
     }),
   );
-  loadState({ items: [], entries: [], notes: [], settings: DEFAULT_SETTINGS, chat: [], layout: [], cursor: new Date().toISOString() }, false);
+  loadState({ items: [], entries: [], notes: [], alarms: [], settings: DEFAULT_SETTINGS, chat: [], layout: [], cursor: new Date().toISOString() }, false);
 });
 afterEach(() => {
   cleanup();

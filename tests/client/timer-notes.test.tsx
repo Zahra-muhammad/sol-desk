@@ -35,7 +35,7 @@ beforeEach(() => {
       return new Response(JSON.stringify({ ok: true }));
     }),
   );
-  loadState({ items: [], entries: [], notes: [], settings: DEFAULT_SETTINGS, chat: [], layout: [], cursor: new Date().toISOString() }, false);
+  loadState({ items: [], entries: [], notes: [], alarms: [], settings: DEFAULT_SETTINGS, chat: [], layout: [], cursor: new Date().toISOString() }, false);
 });
 
 const entries = () => Object.values(S().entries);

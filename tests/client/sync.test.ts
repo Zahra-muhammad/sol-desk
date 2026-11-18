@@ -23,7 +23,7 @@ function engine(push: (b: PushBody) => Promise<Result<PushResult>>) {
   const sleeps: number[] = [];
   const deps: SyncDeps = {
     push,
-    pull: async () => ({ ok: true, data: { items: [], entries: [], notes: [], settings: null, chat: null, cursor: 'c' } }),
+    pull: async () => ({ ok: true, data: { items: [], entries: [], notes: [], alarms: [], settings: null, chat: null, cursor: 'c' } }),
     store,
     onStatus: (s) => statuses.push(s),
     onPushed: () => {},
@@ -37,7 +37,7 @@ function engine(push: (b: PushBody) => Promise<Result<PushResult>>) {
   return { e, store, statuses, sleeps, deps };
 }
 
-const ok = (b: PushBody): Result<PushResult> => ({ ok: true, data: { items: b.items ?? [], entries: b.entries ?? [], notes: b.notes ?? [], settings: DEFAULT_SETTINGS } });
+const ok = (b: PushBody): Result<PushResult> => ({ ok: true, data: { items: b.items ?? [], entries: b.entries ?? [], notes: b.notes ?? [], alarms: b.alarms ?? [], settings: DEFAULT_SETTINGS } });
 const offline: Result<PushResult> = { ok: false, status: 0 };
 
 describe('SyncEngine', () => {
@@ -130,7 +130,7 @@ describe('SyncEngine', () => {
     const e = new SyncEngine(
       {
         push: async (b) => ok(b),
-        pull: async () => ({ ok: true, data: { items: [], entries: [], notes: [], settings: null, chat: null, cursor: 'c' } }),
+        pull: async () => ({ ok: true, data: { items: [], entries: [], notes: [], alarms: [], settings: null, chat: null, cursor: 'c' } }),
         store,
         onStatus: () => {},
         onPushed: () => {},

@@ -34,7 +34,7 @@ describe('today.md footer', () => {
         return new Response(JSON.stringify({ items: [], entries: [], notes: [], settings: null, chat: null, cursor: new Date().toISOString() }), { status: 200 });
       }),
     );
-    loadState({ items: [], entries: [], notes: [], settings: DEFAULT_SETTINGS, chat: [], layout: [], cursor: new Date().toISOString() }, false);
+    loadState({ items: [], entries: [], notes: [], alarms: [], settings: DEFAULT_SETTINGS, chat: [], layout: [], cursor: new Date().toISOString() }, false);
   });
 
   afterEach(() => {
