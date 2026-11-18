@@ -194,6 +194,23 @@ export function Thumb({ k, style }: { k: WinKey; style?: React.CSSProperties }) 
         </>
       );
       break;
+    case 'alarms':
+      // A twin-bell alarm clock: yellow bells, red case, cream face.
+      body = (
+        <>
+          <rect width="62" height="50" fill="#2b2b2b" />
+          <circle cx="19" cy="11" r="6" fill="#ffc93c" />
+          <circle cx="43" cy="11" r="6" fill="#ffc93c" />
+          <rect x="18" y="41" width="4" height="6" rx="1.5" fill="#ff4a3a" transform="rotate(25 20 44)" />
+          <rect x="40" y="41" width="4" height="6" rx="1.5" fill="#ff4a3a" transform="rotate(-25 42 44)" />
+          <circle cx="31" cy="27" r="16" fill="#ff4a3a" />
+          <circle cx="31" cy="27" r="12.5" fill="#fff8e1" />
+          <line x1="31" y1="27" x2="31" y2="18.5" stroke="#141414" strokeWidth="2.2" strokeLinecap="round" />
+          <line x1="31" y1="27" x2="37" y2="30.5" stroke="#141414" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="31" cy="27" r="1.8" fill="#141414" />
+        </>
+      );
+      break;
     case 'notes':
       // A spiral notebook with a pink cover band and ruled lines.
       body = (

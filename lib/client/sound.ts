@@ -78,7 +78,7 @@ function click(freq: number, snapHz: number, decay: number, vol: number, delay =
   n.start(t);
 }
 
-export type Snd = 'click' | 'tick' | 'open' | 'close' | 'key' | 'unkey' | 'msg' | 'del' | 'err' | 'unlock';
+export type Snd = 'click' | 'tick' | 'open' | 'close' | 'key' | 'unkey' | 'msg' | 'del' | 'err' | 'unlock' | 'alarm';
 
 /** The sound map. */
 const MAP: Record<Snd, () => void> = {
@@ -108,6 +108,12 @@ const MAP: Record<Snd, () => void> = {
   err: () => {
     click(120, 2000, 0.05, 0.3);
     click(100, 1800, 0.05, 0.25, 0.09);
+  },
+  // alarm ringing: three quick bright strikes, like an alarm-clock bell (repeated by the ringer)
+  alarm: () => {
+    click(260, 5200, 0.035, 0.42);
+    click(260, 5200, 0.035, 0.42, 0.11);
+    click(320, 5600, 0.04, 0.42, 0.22);
   },
   // unlocked: three rising clicks, 70 ms apart
   unlock: () => {

@@ -1,9 +1,9 @@
 import 'server-only';
 import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
-import type { Backup, ChatMessage, DeskDelta, DeskState, Item, Note, Settings, SettingsPatch, TimeEntry, WinLayout } from '@/lib/shared/types';
+import type { Alarm, Backup, ChatMessage, DeskDelta, DeskState, Item, Note, Settings, SettingsPatch, TimeEntry, WinLayout } from '@/lib/shared/types';
 import type { DB } from './db/client';
-import { chatMessages, items, notes, settings, timeEntries, windowLayout } from './db/schema';
-import { EntryIn, ItemIn, LayoutIn, NoteIn, SettingsPatchIn, normalizeImportedEntry, normalizeImportedItem } from './validate';
+import { alarms, chatMessages, items, notes, settings, timeEntries, windowLayout } from './db/schema';
+import { AlarmIn, EntryIn, ItemIn, LayoutIn, NoteIn, SettingsPatchIn, normalizeImportedEntry, normalizeImportedItem } from './validate';
 
 type ItemRow = typeof items.$inferSelect;
 type SettingsRow = typeof settings.$inferSelect;
@@ -70,7 +70,19 @@ function toSettings(r: SettingsRow): Settings {
 }
 
 function toChat(r: typeof chatMessages.$inferSelect): ChatMessage {
-  return { id: r.id, role: r.role, content: r.content, addedCount: r.addedCount, createdAt: r.createdAt.toISOString() };
+  return { id: r.id, role: r.role, content: r.content, addedCount: r.addedCount, actions: r.actions, createdAt: r.createdAt.toISOString() };
+}
+
+export function toAlarm(r: typeof alarms.$inferSelect): Alarm {
+  return {
+    id: r.id,
+    label: r.label,
+    at: r.at.toISOString(),
+    dismissedAt: r.dismissedAt ? r.dismissedAt.toISOString() : null,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    deletedAt: r.deletedAt ? r.deletedAt.toISOString() : null,
+  };
 }
 
 function toLayout(r: typeof windowLayout.$inferSelect): WinLayout {
@@ -259,6 +271,56 @@ export async function liveNotes(db: DB): Promise<Note[]> {
   return rows.map(toNote);
 }
 
+// ---------------------------------------------------------------- alarms
+
+/** Upsert alarms. Newest updatedAt wins; deletes are soft. */
+export async function pushAlarms(db: DB, list: Alarm[], opts: { force?: boolean; now?: Date } = {}): Promise<Alarm[]> {
+  if (!list.length) return [];
+  const now = opts.now ?? new Date();
+  const latest = new Map<string, Alarm>();
+  for (const a of list) {
+    const cur = latest.get(a.id);
+    if (!cur || cur.updatedAt <= a.updatedAt) latest.set(a.id, a);
+  }
+  const rows = [...latest.values()].map((a) => ({
+    id: a.id,
+    label: a.label,
+    at: new Date(a.at),
+    dismissedAt: a.dismissedAt ? new Date(a.dismissedAt) : null,
+    createdAt: new Date(a.createdAt),
+    updatedAt: new Date(Math.min(Date.parse(a.updatedAt), now.getTime() + MAX_FUTURE_MS)),
+    deletedAt: a.deletedAt ? new Date(a.deletedAt) : null,
+    syncedAt: sql`now()`,
+  }));
+  for (let i = 0; i < rows.length; i += 500) {
+    await db
+      .insert(alarms)
+      .values(rows.slice(i, i + 500))
+      .onConflictDoUpdate({
+        target: alarms.id,
+        set: { label: ex('label'), at: ex('at'), dismissedAt: ex('dismissed_at'), updatedAt: ex('updated_at'), deletedAt: ex('deleted_at'), syncedAt: sql`now()` },
+        ...(opts.force ? {} : { setWhere: sql`${alarms.updatedAt} <= excluded.updated_at` }),
+      });
+  }
+  const ids = [...latest.keys()];
+  const out: Alarm[] = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    out.push(...(await db.select().from(alarms).where(inArray(alarms.id, ids.slice(i, i + 500)))).map(toAlarm));
+  }
+  return out;
+}
+
+/** Alarms still to come or still ringing, plus the last 2 days of finished ones (for "Earlier"). */
+export async function liveAlarms(db: DB): Promise<Alarm[]> {
+  const from = new Date(Date.now() - 2 * 864e5);
+  const rows = await db
+    .select()
+    .from(alarms)
+    .where(and(isNull(alarms.deletedAt), or(gt(alarms.at, from), isNull(alarms.dismissedAt))))
+    .orderBy(asc(alarms.at));
+  return rows.map(toAlarm);
+}
+
 /** Entries from the last 60 days, plus a timer that is still running however old. */
 export async function liveEntries(db: DB, days = 60): Promise<TimeEntry[]> {
   const from = new Date(Date.now() - days * 864e5);
@@ -301,8 +363,8 @@ export async function listChat(db: DB, limit = CHAT_LIMIT): Promise<ChatMessage[
   return rows.reverse().map(toChat);
 }
 
-export async function addChat(db: DB, role: 'user' | 'assistant', content: string, addedCount = 0): Promise<ChatMessage> {
-  const [r] = await db.insert(chatMessages).values({ role, content, addedCount }).returning();
+export async function addChat(db: DB, role: 'user' | 'assistant', content: string, addedCount = 0, actions = ''): Promise<ChatMessage> {
+  const [r] = await db.insert(chatMessages).values({ role, content, addedCount, actions: actions.slice(0, 1000) }).returning();
   return toChat(r);
 }
 
@@ -340,8 +402,9 @@ export async function getState(db: DB): Promise<DeskState> {
   const its = await liveItems(db);
   const entries = await liveEntries(db);
   const nts = await liveNotes(db);
+  const als = await liveAlarms(db);
   const [st, chat, layout] = [await getSettings(db), await listChat(db), await getLayout(db)];
-  return { items: its, entries, notes: nts, settings: st, chat, layout, cursor: cursor.toISOString() };
+  return { items: its, entries, notes: nts, alarms: als, settings: st, chat, layout, cursor: cursor.toISOString() };
 }
 
 /** Everything that changed since `since` — including deletions, so other devices drop them too. */
@@ -351,6 +414,7 @@ export async function getDelta(db: DB, since: Date): Promise<DeskDelta> {
   const changed = await db.select().from(items).where(gt(items.syncedAt, lower));
   const changedEntries = await db.select().from(timeEntries).where(gt(timeEntries.syncedAt, lower));
   const changedNotes = await db.select().from(notes).where(gt(notes.syncedAt, lower));
+  const changedAlarms = await db.select().from(alarms).where(gt(alarms.syncedAt, lower));
   const [s] = await db
     .select()
     .from(settings)
@@ -361,6 +425,7 @@ export async function getDelta(db: DB, since: Date): Promise<DeskDelta> {
     items: changed.map(toItem),
     entries: changedEntries.map(toEntry),
     notes: changedNotes.map(toNote),
+    alarms: changedAlarms.map(toAlarm),
     settings: s ? toSettings(s) : null,
     chat: chatChanged ? await listChat(db) : null,
     cursor: cursor.toISOString(),
@@ -403,6 +468,7 @@ export async function exportAll(db: DB): Promise<Backup> {
     items: all,
     entries: (await db.select().from(timeEntries).orderBy(asc(timeEntries.startedAt))).map(toEntry),
     notes: (await db.select().from(notes).orderBy(asc(notes.createdAt))).map(toNote),
+    alarms: (await db.select().from(alarms).orderBy(asc(alarms.at))).map(toAlarm),
     settings: { p1: st.p1, p2: st.p2, theme: st.theme, sound: st.sound },
     chat,
     layout: await getLayout(db),
@@ -415,7 +481,7 @@ export class ImportError extends Error {}
  * Restore a backup. Every item in the file is written as it is in the file (and wins over the
  * server's copy, including bringing back deleted ones). Items not in the file are left alone.
  */
-export async function importBackup(db: DB, raw: unknown): Promise<{ items: number; entries: number; notes: number; skipped: number }> {
+export async function importBackup(db: DB, raw: unknown): Promise<{ items: number; entries: number; notes: number; alarms: number; skipped: number }> {
   if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { items?: unknown }).items)) {
     throw new ImportError('Not a desk backup: expected an "items" list.');
   }
@@ -440,6 +506,18 @@ export async function importBackup(db: DB, raw: unknown): Promise<{ items: numbe
     }
     await pushEntries(db, ok, { force: true, now });
     entriesIn = ok.length;
+  }
+
+  let alarmsIn = 0;
+  if (Array.isArray((raw as { alarms?: unknown }).alarms)) {
+    const ok: Alarm[] = [];
+    for (const r of (raw as { alarms: unknown[] }).alarms) {
+      const p = AlarmIn.safeParse(normalizeImportedEntry(r, now));
+      if (p.success) ok.push(p.data);
+      else skipped++;
+    }
+    await pushAlarms(db, ok, { force: true, now });
+    alarmsIn = ok.length;
   }
 
   let notesIn = 0;
@@ -482,5 +560,5 @@ export async function importBackup(db: DB, raw: unknown): Promise<{ items: numbe
     if (ls.length) await putLayout(db, ls);
   }
 
-  return { items: good.length, entries: entriesIn, notes: notesIn, skipped };
+  return { items: good.length, entries: entriesIn, notes: notesIn, alarms: alarmsIn, skipped };
 }

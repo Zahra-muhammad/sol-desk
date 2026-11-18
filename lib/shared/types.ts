@@ -58,6 +58,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   addedCount: number;
+  /** What the planner did while answering, e.g. "Alarm set for 16:00 · Timer started". */
+  actions: string;
   createdAt: string;
 }
 
@@ -84,7 +86,19 @@ export interface Note {
   deletedAt: string | null;
 }
 
-export const WINDOW_KEYS = ['today', 'calendar', 'meetings', 'todo', 'p1', 'p2', 'future', 'chat', 'timer', 'notes'] as const;
+/** An alarm or countdown ("timer till 4pm", "25 min"). Rings at `at` until dismissed. Syncs like items. */
+export interface Alarm {
+  id: string;
+  label: string;
+  /** ISO timestamp it rings at. */
+  at: string;
+  dismissedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export const WINDOW_KEYS = ['today', 'calendar', 'meetings', 'todo', 'p1', 'p2', 'future', 'chat', 'timer', 'notes', 'alarms'] as const;
 export type SavedWinKey = (typeof WINDOW_KEYS)[number];
 
 export interface WinLayout {
@@ -104,6 +118,7 @@ export interface DeskState {
   /** Time entries from the last 60 days, plus any running timer. */
   entries: TimeEntry[];
   notes: Note[];
+  alarms: Alarm[];
   settings: Settings;
   chat: ChatMessage[];
   layout: WinLayout[];
@@ -117,6 +132,7 @@ export interface DeskDelta {
   /** Changed time entries and notes, including soft-deleted ones. */
   entries: TimeEntry[];
   notes: Note[];
+  alarms: Alarm[];
   settings: Settings | null;
   /** Full recent chat, only when it changed. */
   chat: ChatMessage[] | null;
@@ -127,6 +143,7 @@ export interface PushBody {
   items?: Item[];
   entries?: TimeEntry[];
   notes?: Note[];
+  alarms?: Alarm[];
   settings?: SettingsPatch;
   layout?: WinLayout[];
 }
@@ -136,6 +153,7 @@ export interface PushResult {
   items: Item[];
   entries: TimeEntry[];
   notes: Note[];
+  alarms: Alarm[];
   settings: Settings;
 }
 
@@ -146,6 +164,7 @@ export interface Backup {
   items: Item[];
   entries: TimeEntry[];
   notes: Note[];
+  alarms: Alarm[];
   settings: Omit<Settings, 'updatedAt'>;
   chat: ChatMessage[];
   layout: WinLayout[];

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { TODAY, iso } from '@/lib/shared/dates';
-import { DEFAULT_SETTINGS, type ChatMessage, type Item, type Note, type ProjectKey, type SavedWinKey, type Settings, type TimeEntry } from '@/lib/shared/types';
+import { DEFAULT_SETTINGS, type Alarm, type ChatMessage, type Item, type Note, type ProjectKey, type SavedWinKey, type Settings, type TimeEntry } from '@/lib/shared/types';
 import type { Collection, SaveStatus } from './sync';
 
 export type WinKey = SavedWinKey | 'form';
@@ -30,6 +30,8 @@ export interface DeskStore {
   entries: Record<string, TimeEntry>;
   /** Notebook pages (notebook.md). */
   notes: Record<string, Note>;
+  /** Alarms & countdowns (alarms.app). */
+  alarms: Record<string, Alarm>;
   settings: Settings;
   chat: ChatMessage[];
   live: ChatLive | null;
@@ -61,7 +63,7 @@ export interface DeskStore {
   startOpen: boolean;
   toast: { msg: string; undo: boolean; n: number } | null;
   /** What Undo brings back: the last thing deleted (items, time entries or notes). */
-  lastDeleted: { kind: Collection; recs: (Item | TimeEntry | Note)[] } | null;
+  lastDeleted: { kind: Collection; recs: (Item | TimeEntry | Note | Alarm)[] } | null;
 
   locked: boolean;
   lockMode: LockMode;
@@ -77,6 +79,7 @@ export const initialDesk = (): DeskStore => ({
   items: {},
   entries: {},
   notes: {},
+  alarms: {},
   settings: DEFAULT_SETTINGS,
   chat: [],
   live: null,

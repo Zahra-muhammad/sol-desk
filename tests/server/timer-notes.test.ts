@@ -101,6 +101,6 @@ describe('planner context', () => {
     });
     expect(text).toContain('Time tracked in the last 7 days: 2h 30m — Finapt 2h 00m, bazaar 30m');
     expect(text).toMatch(/Timer running now: "Bazaar doc" \(bazaar\) since \d\d:\d\d/);
-    expect(text).toContain('- Launch ideas: pricing page needs work');
+    expect(text).toMatch(/- \[note\d+\] Launch ideas: pricing page needs work/);
   });
 });

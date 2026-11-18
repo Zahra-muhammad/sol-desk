@@ -1,7 +1,7 @@
 import 'server-only';
 import { z } from 'zod';
 import { ID_RE } from '@/lib/shared/ids';
-import { WINDOW_KEYS, type Item, type Note, type SettingsPatch, type TimeEntry, type WinLayout } from '@/lib/shared/types';
+import { WINDOW_KEYS, type Alarm, type Item, type Note, type SettingsPatch, type TimeEntry, type WinLayout } from '@/lib/shared/types';
 
 const isIso = (v: string) => !Number.isNaN(Date.parse(v));
 const isDay = (d: string) => {
@@ -62,6 +62,17 @@ export const EntryIn = z.object({
   deletedAt: ts.nullable().catch(null),
 }) satisfies z.ZodType<TimeEntry, unknown>;
 
+/** An alarm / countdown from the client. */
+export const AlarmIn = z.object({
+  id: z.string().regex(ID_RE),
+  label: clip(300),
+  at: ts,
+  dismissedAt: ts.nullable().catch(null),
+  createdAt: ts.catch(() => new Date().toISOString()),
+  updatedAt: ts,
+  deletedAt: ts.nullable().catch(null),
+}) satisfies z.ZodType<Alarm, unknown>;
+
 /** A notebook page from the client. */
 export const NoteIn = z.object({
   id: z.string().regex(ID_RE),
@@ -101,13 +112,18 @@ export const PushIn = z.object({
   items: z.array(ItemIn).max(1000).optional(),
   entries: z.array(EntryIn).max(1000).optional(),
   notes: z.array(NoteIn).max(1000).optional(),
+  alarms: z.array(AlarmIn).max(1000).optional(),
   settings: SettingsPatchIn.optional(),
   layout: z.array(LayoutIn).max(20).optional(),
 });
 
 export const PasswordIn = z.object({ password: z.string().min(1).max(1024) });
 export const ChangePasswordIn = z.object({ current: z.string().min(1).max(1024), next: z.string().max(1024).optional() });
-export const PlannerIn = z.object({ message: z.string().trim().min(1).max(4000) });
+export const PlannerIn = z.object({
+  message: z.string().trim().min(1).max(4000),
+  /** The browser time zone, so "4pm" means 4pm where Sol is. Falls back to Asia/Dubai. */
+  tz: z.string().max(64).optional(),
+});
 
 /** Imported time entries and notes win over the server's copy, like imported items. */
 export function normalizeImportedEntry(raw: unknown, now: Date): unknown {

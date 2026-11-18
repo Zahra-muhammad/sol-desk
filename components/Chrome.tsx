@@ -26,6 +26,7 @@ import { ask } from '@/lib/client/chat';
 import { snd } from '@/lib/client/sound';
 import { S, setDesk, useDesk, type WinKey } from '@/lib/client/store';
 import { DesktopIcon, Glyph, LockIcon, MailIcon, SpeakerOff, SpeakerOn, StartIcon, SunIcon, Thumb } from './Glyphs';
+import { TrayAlarm } from './AlarmsWin';
 import { TrayTimer } from './TimerWin';
 
 // Hover tick (mouse only), once per item entered.
@@ -198,6 +199,12 @@ export function MenuBar({ ready }: { ready: boolean }) {
         >
           <MailIcon />
         </button>
+        <TrayAlarm
+          onOpen={(e) => {
+            if (S().locked) return;
+            openFrom('alarms', e);
+          }}
+        />
         <TrayTimer
           onOpen={(e) => {
             if (S().locked) return;

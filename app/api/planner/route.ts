@@ -1,22 +1,15 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { validTimeZone } from '@/lib/shared/alarm';
 import { handle, json, requireSession } from '@/lib/server/http';
-import {
-  ADD_ITEMS_TOOL,
-  AddItemsIn,
-  DEFAULT_MODEL,
-  SYSTEM_PROMPT,
-  contextBlock,
-  fallbackParams,
-  plannerWindow,
-  toolItemsToItems,
-} from '@/lib/server/planner';
-import { addChat, getSettings, listChat, liveEntries, liveNotes, plannerItems, pushItems } from '@/lib/server/repo';
+import { DEFAULT_MODEL, SYSTEM_PROMPT, TIME_ZONE, contextBlock, fallbackParams, plannerWindow } from '@/lib/server/planner';
+import { TOOLS, runTool, type ToolOutcome } from '@/lib/server/plannerTools';
+import { addChat, getSettings, listChat, liveAlarms, liveEntries, liveNotes, plannerItems } from '@/lib/server/repo';
 import { PlannerIn } from '@/lib/server/validate';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const MAX_TURNS = 5;
+const MAX_TURNS = 6;
 
 function friendly(err: unknown, model: string): string {
   if (err instanceof Anthropic.AuthenticationError) return 'The planner’s API key was rejected. Check ANTHROPIC_API_KEY on the server.';
@@ -31,9 +24,11 @@ function friendly(err: unknown, model: string): string {
 
 /**
  * planner.chat — streams the reply as server-sent events:
- *   {type:'text', text}            a piece of the reply
- *   {type:'added', items}          items the planner just saved (the calendar updates live)
- *   {type:'done', user, assistant} the saved chat messages
+ *   {type:'text', text}                 a piece of the reply
+ *   {type:'changed', items?, entries?, notes?, alarms?, settings?}
+ *                                       records the planner just changed (the desk updates live)
+ *   {type:'ui', action, window?}        open/close a window, show desktop, lock
+ *   {type:'done', user, assistant}      the saved chat messages
  *   {type:'error', error}
  */
 export const POST = handle(async (req: Request) => {
@@ -47,10 +42,15 @@ export const POST = handle(async (req: Request) => {
 
   const { db } = a;
   const message = body.data.message;
+  const tz = validTimeZone(body.data.tz) ? body.data.tz : TIME_ZONE;
   const model = process.env.ANTHROPIC_MODEL || DEFAULT_MODEL;
-  const w = plannerWindow();
-  const [settings, items, history] = [await getSettings(db), await plannerItems(db, w.day, w.from, w.to), await listChat(db, 12)];
-  const [entries, notebook] = [await liveEntries(db, 7), (await liveNotes(db)).slice(0, 10)];
+  const w = plannerWindow(new Date(), tz);
+  const settings = await getSettings(db);
+  const items = await plannerItems(db, w.day, w.from, w.to);
+  const history = await listChat(db, 12);
+  const entries = await liveEntries(db, 7);
+  const notebook = (await liveNotes(db)).slice(0, 10);
+  const alarmList = await liveAlarms(db);
 
   // History as plain text turns; it must start with a user turn.
   const past: Anthropic.Beta.BetaMessageParam[] = history.map((m) => ({ role: m.role, content: m.content || '…' }));
@@ -58,7 +58,7 @@ export const POST = handle(async (req: Request) => {
   const messages: Anthropic.Beta.BetaMessageParam[] = [...past, { role: 'user', content: message }];
   const system: Anthropic.Beta.BetaTextBlockParam[] = [
     { type: 'text', text: SYSTEM_PROMPT },
-    { type: 'text', text: contextBlock(items, settings, new Date(), { entries, notes: notebook }) },
+    { type: 'text', text: contextBlock(items, settings, new Date(), { entries, notes: notebook, alarms: alarmList, tz }) },
   ];
 
   const client = new Anthropic();
@@ -77,10 +77,22 @@ export const POST = handle(async (req: Request) => {
       };
       let text = '';
       let added = 0;
+      const did: string[] = [];
       let retries = 0;
       const emit = (t: string) => {
         text += t;
         send({ type: 'text', text: t });
+      };
+      const apply = (o: ToolOutcome) => {
+        if (o.changed) send({ type: 'changed', ...o.changed });
+        for (const u of o.ui ?? []) send({ type: 'ui', ...u });
+        added += o.added ?? 0;
+        did.push(...(o.did ?? []));
+      };
+      const save = async (content: string) => {
+        const u = await addChat(db, 'user', message);
+        const asst = await addChat(db, 'assistant', content, added, did.join(' · '));
+        send({ type: 'done', user: u, assistant: asst });
       };
 
       try {
@@ -91,7 +103,7 @@ export const POST = handle(async (req: Request) => {
               max_tokens: 8000,
               system,
               messages,
-              tools: [ADD_ITEMS_TOOL],
+              tools: TOOLS,
               output_config: { effort: 'low' },
               ...fallbackParams(model),
             },
@@ -125,41 +137,21 @@ export const POST = handle(async (req: Request) => {
           messages.push({ role: 'assistant', content: msg.content });
           const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
           for (const u of uses) {
-            if (u.name !== ADD_ITEMS_TOOL.name) {
-              results.push({ type: 'tool_result', tool_use_id: u.id, is_error: true, content: `Unknown tool ${u.name}` });
-              continue;
-            }
-            const parsed = AddItemsIn.safeParse(u.input);
-            if (!parsed.success) {
-              results.push({ type: 'tool_result', tool_use_id: u.id, is_error: true, content: JSON.stringify({ INVALID_JSON: JSON.stringify(u.input) }) });
-              continue;
-            }
-            const saved = await pushItems(db, toolItemsToItems(parsed.data));
-            added += saved.length;
-            send({ type: 'added', items: saved });
-            results.push({
-              type: 'tool_result',
-              tool_use_id: u.id,
-              content: JSON.stringify({ ok: true, added: saved.map((i) => ({ title: i.title, date: i.date, time: i.time, type: i.type })) }),
-            });
+            // Every tool validates its own input before writing anything.
+            const o = await runTool(u.name, u.input, { db, tz, now: new Date() });
+            apply(o);
+            results.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(o.result), ...(o.isError ? { is_error: true } : {}) });
           }
           messages.push({ role: 'user', content: results });
           if (text && !text.endsWith('\n')) emit('\n\n');
         }
 
-        const reply = text.trim() || (added ? 'Done.' : 'I’m not sure what to say to that — could you rephrase?');
-        const u = await addChat(db, 'user', message);
-        const asst = await addChat(db, 'assistant', reply, added);
-        send({ type: 'done', user: u, assistant: asst });
+        await save(text.trim() || (did.length ? 'Done.' : 'I’m not sure what to say to that — could you rephrase?'));
       } catch (err) {
         if (!(err instanceof Anthropic.APIUserAbortError)) console.error('[planner]', err);
-        // Items the planner already saved stay saved; record the exchange so the chat shows it.
-        if (added) {
-          const u = await addChat(db, 'user', message).catch(() => null);
-          const asst = await addChat(db, 'assistant', text.trim() || 'Added to your calendar.', added).catch(() => null);
-          if (u && asst) send({ type: 'done', user: u, assistant: asst });
-          else send({ type: 'error', error: friendly(err, model) });
-        } else send({ type: 'error', error: friendly(err, model) });
+        // Whatever the planner already did stays done; record the exchange so the chat shows it.
+        if (did.length) await save(text.trim() || 'Done.').catch(() => send({ type: 'error', error: friendly(err, model) }));
+        else send({ type: 'error', error: friendly(err, model) });
       } finally {
         open = false;
         try {

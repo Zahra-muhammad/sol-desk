@@ -20,6 +20,7 @@ import { S, pname, setDesk, useDesk, type TodoFilter, type WinKey } from '@/lib/
 import { DOW, MON, TODAY, addD, fmtD, iso, pad, parse } from '@/lib/shared/dates';
 import type { Item, ItemType, ProjectKey } from '@/lib/shared/types';
 import { AutoNote } from './AutoNote';
+import { AlarmsFooter, AlarmsWin } from './AlarmsWin';
 import { Notebook, NotebookFooter } from './Notebook';
 import { QuickAdd } from './QuickAdd';
 import { Row } from './Row';
@@ -561,15 +562,20 @@ export function Chat() {
         {!has && (
           <div className="msg b">
             <p>
-              Hi Sol. I can see your calendar, meetings and to-dos. Ask me to plan your day or week, split time between your two projects, or turn a messy list
-              into a schedule — I can add things to your calendar for you.
+              Hi Sol. I can see your calendar, meetings, to-dos, notes, alarms and tracked time. Ask me to plan your day or week, split time between your
+              two projects, or turn a messy list into a schedule — and I can do things for you: add or move plans, tick off to-dos, set alarms (“timer till
+              4pm”), track time, write notes, rename projects or switch the theme.
             </p>
           </div>
         )}
         {chat.map((m) => (
           <div key={m.id} className={`msg ${m.role === 'user' ? 'u' : 'b'}`}>
             {m.role === 'user' ? m.content : <span dangerouslySetInnerHTML={{ __html: md(m.content) }} />}
-            {m.addedCount > 0 && <span className="added">✓ Added {m.addedCount} to your calendar</span>}
+            {m.actions ? (
+              <span className="added">✓ {m.actions}</span>
+            ) : (
+              m.addedCount > 0 && <span className="added">✓ Added {m.addedCount} to your calendar</span>
+            )}
           </div>
         ))}
         {live && (
@@ -787,6 +793,8 @@ export function WindowBody({ k }: { k: WinKey }) {
       return <TimerWin />;
     case 'notes':
       return <Notebook />;
+    case 'alarms':
+      return <AlarmsWin />;
   }
 }
 
@@ -868,6 +876,8 @@ export function WindowFooter({ k }: { k: WinKey }) {
       return <TimerFooter />;
     case 'notes':
       return <NotebookFooter />;
+    case 'alarms':
+      return <AlarmsFooter />;
     default:
       return null;
   }

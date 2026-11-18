@@ -287,3 +287,19 @@ textarea.nbody{flex:1;min-height:220px;resize:none;margin-top:4px;font-size:14px
  .nb:not(.has) .ned{display:none}
  .nback{display:inline-flex}
 }
+
+/* ---- alarms.app ---- */
+.row.al.done .ti,.row.al.done .tm{color:var(--mut)}
+.row.al.ring .ti{font-weight:600}
+.alp svg{width:13px;height:13px}
+.alp.ringing{color:#111;background:var(--mt)}
+.alp.ringing:hover{background:var(--mt);color:#111}
+#ring{position:fixed;left:50%;top:52px;transform:translateX(-50%);z-index:100000;width:min(360px,calc(100vw - 32px));background:var(--win);border-radius:14px;box-shadow:var(--sh),0 0 0 2px var(--mt);padding:16px 16px 14px;display:flex;flex-direction:column;gap:12px;animation:pop .17s ease-out}
+#ring .rt{display:flex;align-items:center;gap:12px}
+#ring .rbell{width:42px;height:42px;border-radius:50%;background:var(--mt);color:#111;display:grid;place-items:center;flex:none;animation:rshake 1.2s ease-in-out infinite}
+#ring .rbell svg{width:20px;height:20px}
+#ring b{display:block;font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.1;font-variant-numeric:tabular-nums}
+#ring span{color:var(--mut);font-size:13px}
+#ring .ra{display:flex;gap:8px}
+#ring .ra .btn{flex:1}
+@keyframes rshake{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(-14deg)}20%,40%{transform:rotate(14deg)}}

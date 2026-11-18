@@ -1,4 +1,4 @@
-import type { DeskDelta, Item, Note, PushBody, PushResult, SettingsPatch, TimeEntry, WinLayout } from '@/lib/shared/types';
+import type { Alarm, DeskDelta, Item, Note, PushBody, PushResult, SettingsPatch, TimeEntry, WinLayout } from '@/lib/shared/types';
 
 export type SaveStatus = 'saved' | 'saving' | 'error';
 
@@ -10,12 +10,13 @@ export type Result<T> =
 export type Synced = { id: string; updatedAt: string; deletedAt: string | null };
 
 /** The synced collections, keyed the same way in the outbox, push body and delta. */
-export const COLLECTIONS = ['items', 'entries', 'notes'] as const;
+export const COLLECTIONS = ['items', 'entries', 'notes', 'alarms'] as const;
 export type Collection = (typeof COLLECTIONS)[number];
 export interface CollectionTypes {
   items: Item;
   entries: TimeEntry;
   notes: Note;
+  alarms: Alarm;
 }
 
 /** Changes that haven't reached the server yet. Coalesced: one entry per record / setting / window. */
@@ -23,11 +24,12 @@ export interface Outbox {
   items: Record<string, Item>;
   entries: Record<string, TimeEntry>;
   notes: Record<string, Note>;
+  alarms: Record<string, Alarm>;
   settings: SettingsPatch;
   layout: Record<string, WinLayout>;
 }
 
-export const emptyOutbox = (): Outbox => ({ items: {}, entries: {}, notes: {}, settings: {}, layout: {} });
+export const emptyOutbox = (): Outbox => ({ items: {}, entries: {}, notes: {}, alarms: {}, settings: {}, layout: {} });
 
 export interface OutboxStore {
   load(): Promise<Outbox | null>;
@@ -54,6 +56,7 @@ export interface Pending {
   items: Set<string>;
   entries: Set<string>;
   notes: Set<string>;
+  alarms: Set<string>;
   settings: Set<string>;
 }
 
@@ -125,6 +128,7 @@ export class SyncEngine {
       items: new Set(Object.keys(this.ob.items)),
       entries: new Set(Object.keys(this.ob.entries)),
       notes: new Set(Object.keys(this.ob.notes)),
+      alarms: new Set(Object.keys(this.ob.alarms)),
       settings: new Set(Object.keys(this.ob.settings)),
     };
   }
@@ -134,6 +138,7 @@ export class SyncEngine {
       items: { ...this.ob.items },
       entries: { ...this.ob.entries },
       notes: { ...this.ob.notes },
+      alarms: { ...this.ob.alarms },
       settings: { ...this.ob.settings },
       layout: { ...this.ob.layout },
     };

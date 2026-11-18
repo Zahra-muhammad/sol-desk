@@ -113,7 +113,7 @@ describe('planner.chat API', () => {
     expect(r.headers.get('content-type')).toMatch(/text\/event-stream/);
     const evs = await events(r);
 
-    const added = evs.find((e) => e.type === 'added');
+    const added = evs.find((e) => e.type === 'changed' && e.items);
     expect(added.items).toHaveLength(1);
     expect(added.items[0]).toMatchObject({ type: 'event', title: 'Gym', date: '2026-11-18', time: '07:00', dur: 45, project: null });
     const text = evs.filter((e) => e.type === 'text').map((e) => e.text).join('');
@@ -128,13 +128,13 @@ describe('planner.chat API', () => {
     // Turn 1 carried the system prompt + planner data; turn 2 carried the tool result.
     const sys = (calls[0].system as { text: string }[]).map((s) => s.text).join('\n');
     expect(sys).toMatch(/warm, direct planning coach/);
-    expect(sys).toMatch(/Dubai time/);
+    expect(sys).toContain('time zone: Asia/Dubai');
     expect(sys).toContain('p1 = "Atlas" (notes: Launch in December)');
     expect(sys).toContain('open, OVERDUE | Overdue thing');
     // Outside the window (14 days back → 60 days ahead):
     expect(sys).not.toContain('Ancient thing');
     expect(sys).not.toContain('Far future');
-    expect(calls[0].tools).toEqual([expect.objectContaining({ name: 'add_items', eager_input_streaming: true })]);
+    expect(calls[0].tools).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'add_items', eager_input_streaming: true }), expect.objectContaining({ name: 'set_alarm' })]));
     const lastMsg = (calls[1].messages as { role: string; content: unknown }[]).at(-1)!;
     expect(lastMsg.role).toBe('user');
     expect(JSON.stringify(lastMsg.content)).toContain('tool_result');
@@ -148,7 +148,7 @@ describe('planner.chat API', () => {
       { text: 'Sorry — could you tell me what to add?', stop: 'end_turn', content: [{ type: 'text', text: 'Sorry — could you tell me what to add?' }] },
     );
     const evs = await events(await plannerPOST(req({ message: 'add something' })));
-    expect(evs.some((e) => e.type === 'added')).toBe(false);
+    expect(evs.some((e) => e.type === 'changed')).toBe(false);
     expect((await liveItems(db)).length).toBe(before);
     const toolResult = JSON.stringify(calls[1].messages);
     expect(toolResult).toContain('"is_error":true');

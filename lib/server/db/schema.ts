@@ -75,6 +75,22 @@ export const notes = pgTable(
   (t) => [index('notes_synced_at_idx').on(t.syncedAt), index('notes_updated_at_idx').on(t.updatedAt)],
 );
 
+/** Alarms and countdowns. Ring at `at` until dismissed. Same newest-wins / soft-delete rules as items. */
+export const alarms = pgTable(
+  'alarms',
+  {
+    id: text('id').primaryKey(),
+    label: text('label').notNull().default(''),
+    at: tz('at').notNull(),
+    dismissedAt: tz('dismissed_at'),
+    createdAt: tz('created_at').notNull().defaultNow(),
+    updatedAt: tz('updated_at').notNull().defaultNow(),
+    deletedAt: tz('deleted_at'),
+    syncedAt: tz('synced_at').notNull().defaultNow(),
+  },
+  (t) => [index('alarms_synced_at_idx').on(t.syncedAt), index('alarms_at_idx').on(t.at)],
+);
+
 /** One row: project names and notes, theme, sound. */
 export const settings = pgTable(
   'settings',
@@ -100,6 +116,8 @@ export const chatMessages = pgTable(
     role: text('role', { enum: ['user', 'assistant'] }).notNull(),
     content: text('content').notNull(),
     addedCount: integer('added_count').notNull().default(0),
+    /** Short summary of what the planner did, e.g. "Alarm set for 16:00 · Timer started". */
+    actions: text('actions').notNull().default(''),
     createdAt: tz('created_at').notNull().defaultNow(),
   },
   (t) => [index('chat_messages_created_at_idx').on(t.createdAt), check('chat_role_check', sql`${t.role} in ('user', 'assistant')`)],

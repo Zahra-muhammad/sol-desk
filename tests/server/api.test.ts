@@ -259,7 +259,7 @@ describe('sync over HTTP', () => {
     const backup = await r.json();
     await db.delete(items);
     const imp = await backupRoute.POST(req('/api/backup', { method: 'POST', cookie, body: backup }));
-    expect(await imp.json()).toEqual({ items: 1, entries: 0, notes: 0, skipped: 0 });
+    expect(await imp.json()).toEqual({ items: 1, entries: 0, notes: 0, alarms: 0, skipped: 0 });
     const st = await (await stateRoute.GET(req('/api/state', { cookie }))).json();
     expect(st.items.map((x: { title: string }) => x.title)).toEqual(['backed up']);
   });

@@ -7,6 +7,7 @@ import {
   type DeskState,
   type Item,
   type ItemType,
+  type Alarm,
   type Note,
   type ProjectKey,
   type Settings,
@@ -45,6 +46,7 @@ export const W: Record<WinKey, WinDef> = {
   chat: { n: 'planner.chat', icon: 'app', w: 400, h: 540, flush: true },
   timer: { n: 'timer.app', icon: 'app', w: 380, h: 560 },
   notes: { n: 'notebook.md', icon: 'file', w: 600, h: 520, flush: true },
+  alarms: { n: 'alarms.app', icon: 'app', w: 380, h: 500 },
   form: { n: 'new.md', icon: 'file', w: 420, h: 'auto' },
 };
 
@@ -59,6 +61,7 @@ export const ICONS: [WinKey, string][] = [
   ['chat', 'planner'],
   ['timer', 'timer'],
   ['notes', 'notebook'],
+  ['alarms', 'alarms'],
 ];
 
 export const iconLabel = (k: WinKey, s: Settings) => (k === 'p1' ? s.p1.name : k === 'p2' ? s.p2.name : ICONS.find((x) => x[0] === k)?.[1] ?? k);
@@ -92,6 +95,7 @@ export function defaultPos(k: WinKey): Geo {
     chat: [Math.max(16, dw - 200 - 400), 70],
     timer: [Math.max(16, dw - 200 - 380 - 40), 100],
     notes: [Math.max(16, dw / 2 - 300), 60],
+    alarms: [Math.max(16, dw - 200 - 380 - 70), 130],
     form: [Math.max(16, dw / 2 - 210), 80],
   };
   const [x, y] = P[k];
@@ -271,12 +275,13 @@ export function deleteItem(id: string, silent = false) {
   if (!silent) toast('Deleted “' + it.title + '”', true);
 }
 
-/** Undo the last delete — items, tracked time or notes. */
+/** Undo the last delete — items, tracked time, notes or alarms. */
 export function undoDelete() {
   const l = S().lastDeleted;
   if (!l) return;
   if (l.kind === 'items') (l.recs as Item[]).forEach((x) => saveItem({ ...x, deletedAt: null }));
   if (l.kind === 'entries') (l.recs as TimeEntry[]).forEach((x) => saveRec('entries', { ...x, deletedAt: null }));
+  if (l.kind === 'alarms') (l.recs as Alarm[]).forEach((x) => saveRec('alarms', { ...x, deletedAt: null }));
   if (l.kind === 'notes') {
     (l.recs as Note[]).forEach((x) => saveRec('notes', { ...x, deletedAt: null }));
     setDesk({ noteSel: l.recs[0]?.id ?? null });
@@ -352,10 +357,11 @@ export function addQuick(it: Item) {
 
 // ---------------------------------------------------------------- time entries & notes (shared)
 
-type Rec<C extends 'entries' | 'notes'> = C extends 'entries' ? TimeEntry : Note;
+type RecKind = 'entries' | 'notes' | 'alarms';
+type Rec<C extends RecKind> = C extends 'entries' ? TimeEntry : C extends 'notes' ? Note : Alarm;
 
 /** Save a time entry or note: on screen now, queued for the server. */
-export function saveRec<C extends 'entries' | 'notes'>(c: C, rec: Rec<C>): Rec<C> {
+export function saveRec<C extends RecKind>(c: C, rec: Rec<C>): Rec<C> {
   const prev = (S()[c] as Record<string, Rec<C>>)[rec.id];
   const next = { ...rec, deletedAt: null, updatedAt: stamp(prev?.updatedAt ?? rec.updatedAt) } as Rec<C>;
   setDesk((s) => ({ [c]: { ...(s[c] as Record<string, Rec<C>>), [rec.id]: next } }) as never);
@@ -364,7 +370,7 @@ export function saveRec<C extends 'entries' | 'notes'>(c: C, rec: Rec<C>): Rec<C
 }
 
 /** Soft delete with Undo. */
-function deleteRec<C extends 'entries' | 'notes'>(c: C, id: string, label: string) {
+function deleteRec<C extends RecKind>(c: C, id: string, label: string) {
   const rec = (S()[c] as Record<string, Rec<C>>)[id];
   if (!rec) return;
   const t = stamp(rec.updatedAt);
@@ -440,6 +446,42 @@ export function deleteNote(id: string) {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   deleteRec('notes', id, `Deleted “${n.title.trim() || 'Untitled note'}”`);
   setDesk({ noteSel: rest[0]?.id ?? null });
+}
+
+// ---------------------------------------------------------------- alarms.app
+
+/** Ask once for permission to show system notifications when an alarm rings in a background tab. */
+function askNotify() {
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') void Notification.requestPermission();
+  } catch {
+    /* not supported */
+  }
+}
+
+export function addAlarm(label: string, at: Date) {
+  const now = new Date().toISOString();
+  const a = saveRec('alarms', { id: uid(), label: label.trim(), at: at.toISOString(), dismissedAt: null, createdAt: now, updatedAt: now, deletedAt: null });
+  askNotify();
+  snd('key');
+  return a;
+}
+
+export function dismissAlarm(id: string) {
+  const a = S().alarms[id];
+  if (a) saveRec('alarms', { ...a, dismissedAt: new Date().toISOString() });
+  snd('click');
+}
+
+export function snoozeAlarm(id: string, ms = 5 * 60e3) {
+  const a = S().alarms[id];
+  if (a) saveRec('alarms', { ...a, at: new Date(Date.now() + ms).toISOString(), dismissedAt: null });
+  snd('click');
+}
+
+export function deleteAlarm(id: string) {
+  const a = S().alarms[id];
+  if (a) deleteRec('alarms', id, `Deleted alarm${a.label ? ` “${a.label}”` : ''}`);
 }
 
 // ---------------------------------------------------------------- settings
@@ -598,7 +640,7 @@ function typingKeys(): Set<string> {
   return out;
 }
 
-function receiveSettings(incoming: Settings, pending: Pending) {
+export function receiveSettings(incoming: Settings, pending: Pending = { items: new Set(), entries: new Set(), notes: new Set(), alarms: new Set(), settings: new Set() }) {
   const s = S();
   for (const k of typingKeys()) pending.settings.add(k);
   const next = applyPending(s.settings, incoming, pending);
@@ -607,8 +649,8 @@ function receiveSettings(incoming: Settings, pending: Pending) {
   setDesk({ settings: next });
 }
 
-/** Merge server copies of items, time entries and notes (newest wins; local unsaved edits are kept). */
-function receiveRecords(r: { items?: Item[]; entries?: TimeEntry[]; notes?: Note[] }, pending?: Pending) {
+/** Merge server copies of items, time entries, notes and alarms (newest wins; local unsaved edits are kept). */
+export function receiveRecords(r: { items?: Item[]; entries?: TimeEntry[]; notes?: Note[]; alarms?: Alarm[] }, pending?: Pending) {
   // Don't replace the note being typed in right now.
   const typingNote = (document.activeElement as HTMLElement | null)?.closest?.('#w-notes .ned') ? S().noteSel : null;
   const noteSkip = new Set(pending?.notes ?? []);
@@ -617,6 +659,7 @@ function receiveRecords(r: { items?: Item[]; entries?: TimeEntry[]; notes?: Note
     items: mergeById(s.items, r.items, pending?.items),
     entries: mergeById(s.entries, r.entries, pending?.entries),
     notes: mergeById(s.notes, r.notes, noteSkip),
+    alarms: mergeById(s.alarms, r.alarms, pending?.alarms),
   }));
 }
 
@@ -660,6 +703,7 @@ export function loadState(state: DeskState, fresh: boolean) {
     items: Object.fromEntries(state.items.map((i) => [i.id, i])),
     entries: Object.fromEntries((state.entries ?? []).map((x) => [x.id, x])),
     notes: Object.fromEntries((state.notes ?? []).map((x) => [x.id, x])),
+    alarms: Object.fromEntries((state.alarms ?? []).map((x) => [x.id, x])),
     settings: state.settings,
     chat: state.chat,
   });
@@ -678,7 +722,7 @@ export function loadState(state: DeskState, fresh: boolean) {
 
   // Re-apply anything queued on this device that never reached the server.
   void e.restore().then((ob) => {
-    receiveRecords({ items: Object.values(ob.items), entries: Object.values(ob.entries), notes: Object.values(ob.notes) });
+    receiveRecords({ items: Object.values(ob.items), entries: Object.values(ob.entries), notes: Object.values(ob.notes), alarms: Object.values(ob.alarms) });
     if (Object.keys(ob.settings).length) setDesk((s) => ({ settings: applySettingsPatch(s.settings, ob.settings) }));
     if (!e.isEmpty()) void e.flush();
   });
