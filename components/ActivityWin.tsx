@@ -120,13 +120,14 @@ export function ActivityWin() {
               <span key={i}>{m}</span>
             ))}
           </div>
+          {/* Weeks start on Monday, so the first row is Monday. */}
           <div className="hm-days" aria-hidden="true">
-            <span />
             <span>Mon</span>
             <span />
             <span>Wed</span>
             <span />
             <span>Fri</span>
+            <span />
             <span />
           </div>
           <div className="hm-grid" role="img" aria-label={`Activity in ${year}: ${stats.activeDays} active days, ${stats.total} activities`}>
@@ -197,7 +198,7 @@ export function ActivityFooter() {
   return (
     <>
       <span>
-        {s.currentStreak}-day streak · {s.activeDays} active days
+        {s.currentStreak}-day streak · {s.activeDays} active day{s.activeDays === 1 ? '' : 's'}
       </span>
       <button
         type="button"

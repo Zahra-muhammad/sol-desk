@@ -47,7 +47,7 @@ export const W: Record<WinKey, WinDef> = {
   timer: { n: 'timer.app', icon: 'app', w: 380, h: 560 },
   notes: { n: 'notebook.md', icon: 'file', w: 600, h: 520, flush: true },
   alarms: { n: 'alarms.app', icon: 'app', w: 380, h: 500 },
-  activity: { n: 'activity.app', icon: 'app', w: 820, h: 470 },
+  activity: { n: 'activity.app', icon: 'app', w: 820, h: 580 },
   form: { n: 'new.md', icon: 'file', w: 420, h: 'auto' },
 };
 

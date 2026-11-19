@@ -206,7 +206,7 @@ describe('rate limiting', () => {
   it('logs failed attempts with time and IP', async () => {
     await setUpPassword();
     await login.POST(req('/api/auth/login', { method: 'POST', body: { password: 'wrong one' }, headers: { 'x-forwarded-for': '203.0.113.7, 10.0.0.1' } }));
-    const [row] = await db.select().from(loginAttempts);
+    const [row] = (await db.select().from(loginAttempts)).filter((r) => !r.ok);
     expect(row).toMatchObject({ ok: false, ip: '203.0.113.7' });
     expect(row.at).toBeInstanceOf(Date);
   });

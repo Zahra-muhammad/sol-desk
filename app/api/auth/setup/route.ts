@@ -1,4 +1,4 @@
-import { PASSWORD_RULE, createSession, hasPassword, isValidPassword, setInitialPassword } from '@/lib/server/auth';
+import { PASSWORD_RULE, createSession, hasPassword, isValidPassword, recordAttempt, setInitialPassword } from '@/lib/server/auth';
 import { getDb } from '@/lib/server/db/client';
 import { clientIp, handle, json, sameOrigin, sessionCookie } from '@/lib/server/http';
 import { PasswordIn } from '@/lib/server/validate';
@@ -12,6 +12,8 @@ export const POST = handle(async (req: Request) => {
   const db = await getDb();
   if (await hasPassword(db)) return json({ error: 'A password is already set.' }, 409);
   if (!(await setInitialPassword(db, body.data.password))) return json({ error: 'A password is already set.' }, 409);
+  // Choosing the password is the first sign-in (it shows on the activity graph).
+  await recordAttempt(db, clientIp(req), true);
   const token = await createSession(db, { ip: clientIp(req), userAgent: req.headers.get('user-agent') });
   return json({ ok: true }, 200, { 'set-cookie': sessionCookie(token) });
 });
