@@ -440,14 +440,6 @@ export function newNote() {
   setTimeout(() => (document.querySelector('#w-notes .ntitle') as HTMLInputElement | null)?.focus(), 40);
 }
 
-/** Save something (e.g. a feed article) as a new notebook page. */
-export function saveToNotebook(title: string, body: string) {
-  const now = new Date().toISOString();
-  saveRec('notes', { id: uid(), title: title.slice(0, 300), body, createdAt: now, updatedAt: now, deletedAt: null });
-  toast(`Saved “${title.length > 40 ? title.slice(0, 39) + '…' : title}” to your notebook`);
-  snd('key');
-}
-
 export function updateNote(id: string, p: Partial<Pick<Note, 'title' | 'body'>>) {
   const n = S().notes[id];
   if (!n) return;

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, date, index, integer, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
 const tz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
@@ -91,19 +91,26 @@ export const alarms = pgTable(
   (t) => [index('alarms_synced_at_idx').on(t.syncedAt), index('alarms_at_idx').on(t.at)],
 );
 
-/** Substacks (RSS feeds) shown in feed.app. */
-export const feedSources = pgTable(
-  'feed_sources',
+/** Articles saved from feed.app, with their cleaned HTML so they stay readable even if the post goes away. */
+export const savedArticles = pgTable(
+  'saved_articles',
   {
+    /** sha1(link), 16 hex chars — the same id the feed uses. */
     id: text('id').primaryKey(),
-    /** The RSS address, e.g. https://name.substack.com/feed */
-    url: text('url').notNull(),
-    title: text('title').notNull().default(''),
-    site: text('site').notNull().default(''),
+    feed: text('feed').notNull(),
+    link: text('link').notNull(),
+    title: text('title').notNull(),
+    subtitle: text('subtitle').notNull().default(''),
+    author: text('author').notNull().default(''),
+    sourceTitle: text('source_title').notNull().default(''),
+    sourceImage: text('source_image').notNull().default(''),
     image: text('image').notNull().default(''),
-    createdAt: tz('created_at').notNull().defaultNow(),
+    /** The post's publish date (ISO), or ''. */
+    date: text('date').notNull().default(''),
+    html: text('html').notNull().default(''),
+    savedAt: tz('saved_at').notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('feed_sources_url_idx').on(t.url)],
+  (t) => [index('saved_articles_saved_at_idx').on(t.savedAt)],
 );
 
 /** One row: project names and notes, theme, sound. */

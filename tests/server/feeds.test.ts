@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { FeedError, isPublicAddress, normalizeFeedUrl, parseFeed, sanitizeArticle } from '@/lib/server/feeds';
+import { FeedError, SEED_HOSTS, directoryFeeds, feedUrl, isPublicAddress, isSubstack, parseFeed, pickPosts, sanitizeArticle } from '@/lib/server/feeds';
+
+const LONG = '<p>' + 'A real paragraph of writing. '.repeat(80) + '</p>';
 
 const RSS = `<?xml version="1.0" encoding="UTF-8"?>
 <rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" version="2.0">
@@ -15,26 +17,45 @@ const RSS = `<?xml version="1.0" encoding="UTF-8"?>
       <dc:creator><![CDATA[Sam]]></dc:creator>
       <pubDate>Tue, 17 Nov 2026 08:00:00 GMT</pubDate>
       <enclosure url="https://substackcdn.com/image/cover.jpg" length="0" type="image/jpeg"/>
-      <content:encoded><![CDATA[<p>Hello <b>grid</b></p><script>alert(1)</script><img src="https://x/y.png" onerror="alert(2)"><a href="javascript:alert(3)">x</a>]]></content:encoded>
+      <content:encoded><![CDATA[<p>Hello <b>grid</b></p><script>alert(1)</script><img src="https://x/y.png" onerror="alert(2)"><a href="javascript:alert(3)">x</a>${LONG}]]></content:encoded>
     </item>
     <item>
       <title>Second</title>
       <link>https://designnotes.substack.com/p/second</link>
       <pubDate>Mon, 16 Nov 2026 08:00:00 GMT</pubDate>
+      <content:encoded><![CDATA[<p>A short note.</p>]]></content:encoded>
     </item>
   </channel>
 </rss>`;
 
-describe('feed.app — finding a Substack feed', () => {
-  it('turns names, addresses and post links into a feed URL', () => {
-    expect(normalizeFeedUrl('lenny')).toBe('https://lenny.substack.com/feed');
-    expect(normalizeFeedUrl('@Lenny')).toBe('https://lenny.substack.com/feed');
-    expect(normalizeFeedUrl('lenny.substack.com')).toBe('https://lenny.substack.com/feed');
-    expect(normalizeFeedUrl('https://lenny.substack.com/p/some-post?utm=x')).toBe('https://lenny.substack.com/feed');
-    expect(normalizeFeedUrl('www.lennysnewsletter.com')).toBe('https://www.lennysnewsletter.com/feed');
-    expect(normalizeFeedUrl('https://example.com/feed/')).toBe('https://example.com/feed');
-    expect(() => normalizeFeedUrl('   ')).toThrow(FeedError);
-    expect(() => normalizeFeedUrl('ftp://x.com')).toThrow(FeedError);
+describe('feed.app — where posts come from', () => {
+  it('accepts only plain https://host/feed addresses', () => {
+    expect(feedUrl('https://Lenny.Substack.com/feed')).toBe('https://lenny.substack.com/feed');
+    expect(feedUrl('https://www.lennysnewsletter.com/feed')).toBe('https://www.lennysnewsletter.com/feed');
+    for (const bad of ['http://x.substack.com/feed', 'https://x.substack.com/feed/', 'https://x.substack.com/feed?a=1', 'https://x.substack.com:444/feed', 'https://u:p@x.substack.com/feed', 'https://127.0.0.1/feed', 'https://localhost/feed', 'https://x.substack.com/p/post', 'nonsense', '']) {
+      expect(feedUrl(bad), bad).toBeNull();
+    }
+  });
+
+  it('reads Substack’s directory: English publications only, custom domains preferred, spam skipped', () => {
+    const feeds = directoryFeeds({
+      publications: [
+        { subdomain: 'designnotes', language: 'en' },
+        { subdomain: 'lenny', custom_domain: 'www.lennysnewsletter.com', language: 'en-US' },
+        { subdomain: 'portugues', language: 'pt-br' },
+        { subdomain: 'spammy', language: 'en', flagged_as_spam: true },
+        { subdomain: 'bad host!', language: 'en' },
+        { subdomain: 'nolang' },
+      ],
+    });
+    expect(feeds).toEqual(['https://designnotes.substack.com/feed', 'https://www.lennysnewsletter.com/feed', 'https://nolang.substack.com/feed']);
+    expect(directoryFeeds(null)).toEqual([]);
+    expect(directoryFeeds({ errors: [] })).toEqual([]);
+  });
+
+  it('has a fallback list of real feed addresses', () => {
+    expect(SEED_HOSTS.length).toBeGreaterThan(30);
+    for (const h of SEED_HOSTS) expect(feedUrl(`https://${h}/feed`), h).not.toBeNull();
   });
 
   it('never fetches private or local addresses', () => {
@@ -48,7 +69,8 @@ describe('feed.app — finding a Substack feed', () => {
 describe('feed.app — reading posts', () => {
   it('parses Substack RSS', () => {
     const f = parseFeed(RSS);
-    expect(f).toMatchObject({ title: 'Design Notes', site: 'https://designnotes.substack.com', image: 'https://substackcdn.com/image/logo.png' });
+    expect(f).toMatchObject({ title: 'Design Notes', site: 'https://designnotes.substack.com', image: 'https://substackcdn.com/image/logo.png', generator: 'Substack' });
+    expect(isSubstack(f)).toBe(true);
     expect(f.items).toHaveLength(2);
     expect(f.items[0]).toMatchObject({
       title: 'Grids, again',
@@ -59,7 +81,16 @@ describe('feed.app — reading posts', () => {
       link: 'https://designnotes.substack.com/p/grids-again',
     });
     expect(f.items[0].id).toMatch(/^[0-9a-f]{16}$/);
+    expect(f.items[0].chars).toBeGreaterThan(1500);
     expect(() => parseFeed('<html>not a feed</html>')).toThrow(FeedError);
+    expect(isSubstack(parseFeed(RSS.replace('<generator>Substack</generator>', '<generator>WordPress</generator>')))).toBe(false);
+  });
+
+  it('picks real articles over short notes', () => {
+    const f = parseFeed(RSS);
+    for (let i = 0; i < 10; i++) expect(pickPosts(f, 2).map((p) => p.title)).toEqual(['Grids, again']);
+    const notesOnly = { ...f, items: f.items.filter((p) => p.title === 'Second') };
+    expect(pickPosts(notesOnly, 2).map((p) => p.title)).toEqual(['Second']);
   });
 
   it('cleans article HTML: no scripts, handlers or javascript: links', () => {

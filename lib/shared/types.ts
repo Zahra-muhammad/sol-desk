@@ -98,21 +98,12 @@ export interface Alarm {
   deletedAt: string | null;
 }
 
-/** A Substack (RSS feed) in feed.app. */
-export interface FeedSource {
-  id: string;
-  url: string;
-  title: string;
-  site: string;
-  image: string;
-  /** Set when the last fetch failed. */
-  error?: string;
-}
-
-/** One post in the feed (the article body is fetched separately). */
+/** One post in feed.app (the article body is fetched separately). */
 export interface FeedItem {
+  /** sha1(link), 16 hex chars. */
   id: string;
-  sourceId: string;
+  /** The publication's RSS address, e.g. https://name.substack.com/feed */
+  feed: string;
   sourceTitle: string;
   sourceImage: string;
   title: string;
@@ -121,6 +112,13 @@ export interface FeedItem {
   date: string;
   image: string;
   link: string;
+}
+
+/** A post kept in feed.app's Saved tab. The cleaned article HTML is stored with it. */
+export interface SavedArticle extends FeedItem {
+  savedAt: string;
+  /** Only sent when one article is asked for (and in backups). */
+  html?: string;
 }
 
 export const WINDOW_KEYS = ['today', 'calendar', 'meetings', 'todo', 'p1', 'p2', 'future', 'chat', 'timer', 'notes', 'alarms', 'activity', 'feed'] as const;
@@ -193,8 +191,8 @@ export interface Backup {
   settings: Omit<Settings, 'updatedAt'>;
   chat: ChatMessage[];
   layout: WinLayout[];
-  /** Subscribed Substacks (feed.app). */
-  feeds?: Pick<FeedSource, 'url' | 'title' | 'site' | 'image'>[];
+  /** Articles saved in feed.app, with their cleaned HTML. */
+  saved?: SavedArticle[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {

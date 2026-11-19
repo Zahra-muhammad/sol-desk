@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as activityRoute from '@/app/api/activity/route';
 import * as feedRoute from '@/app/api/feed/route';
 import * as feedArticle from '@/app/api/feed/article/route';
-import * as feedSourcesRoute from '@/app/api/feed/sources/route';
+import * as feedSaved from '@/app/api/feed/saved/route';
 import * as backupRoute from '@/app/api/backup/route';
 import * as chatClear from '@/app/api/chat/clear/route';
 import * as heartbeat from '@/app/api/auth/heartbeat/route';
@@ -58,9 +58,10 @@ describe('nothing without a session', () => {
     ['GET', stateRoute.GET, '/api/state'],
     ['GET', activityRoute.GET, '/api/activity?year=2026'],
     ['GET', feedRoute.GET, '/api/feed'],
-    ['GET', feedArticle.GET, '/api/feed/article?id=0123456789abcdef'],
-    ['POST', feedSourcesRoute.POST, '/api/feed/sources'],
-    ['DELETE', feedSourcesRoute.DELETE, '/api/feed/sources?id=x'],
+    ['GET', feedArticle.GET, '/api/feed/article?feed=https://x.substack.com/feed&id=0123456789abcdef'],
+    ['GET', feedSaved.GET, '/api/feed/saved'],
+    ['POST', feedSaved.POST, '/api/feed/saved'],
+    ['DELETE', feedSaved.DELETE, '/api/feed/saved?id=0123456789abcdef'],
     ['GET', syncRoute.GET, '/api/sync?since=2020-01-01T00:00:00Z'],
     ['POST', syncRoute.POST, '/api/sync'],
     ['GET', backupRoute.GET, '/api/backup'],
@@ -271,6 +272,24 @@ describe('sync over HTTP', () => {
     expect(await imp.json()).toEqual({ items: 1, entries: 0, notes: 0, alarms: 0, skipped: 0 });
     const st = await (await stateRoute.GET(req('/api/state', { cookie }))).json();
     expect(st.items.map((x: { title: string }) => x.title)).toEqual(['backed up']);
+  });
+
+  it('feed.app only reads plain https://host/feed addresses', async () => {
+    const cookie = await setUpPassword();
+    for (const feed of ['http://x.substack.com/feed', 'https://127.0.0.1/feed', 'https://x.substack.com/feed?x=1', 'https://x.substack.com:8443/feed', 'https://x.substack.com/p/post', 'file:///etc/passwd', '']) {
+      const r = await feedArticle.GET(req(`/api/feed/article?feed=${encodeURIComponent(feed)}&id=0123456789abcdef`, { cookie }));
+      expect(r.status, feed).toBe(400);
+    }
+    const s = await feedSaved.POST(req('/api/feed/saved', { method: 'POST', cookie, body: { feed: 'https://169.254.169.254/feed', id: '0123456789abcdef' } }));
+    expect(s.status).toBe(400);
+  });
+
+  it('feed.app Saved starts empty and rejects bad ids', async () => {
+    const cookie = await setUpPassword();
+    expect(await (await feedSaved.GET(req('/api/feed/saved', { cookie }))).json()).toEqual({ saved: [] });
+    expect((await feedSaved.GET(req('/api/feed/saved?id=nope', { cookie }))).status).toBe(400);
+    expect((await feedSaved.GET(req('/api/feed/saved?id=0123456789abcdef', { cookie }))).status).toBe(404);
+    expect((await feedSaved.DELETE(req('/api/feed/saved?id=../x', { method: 'DELETE', cookie }))).status).toBe(400);
   });
 
   it('the planner explains a missing API key instead of crashing', async () => {

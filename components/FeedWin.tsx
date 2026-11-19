@@ -1,14 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { saveToNotebook } from '@/lib/client/actions';
+import { toast } from '@/lib/client/actions';
 import { call, post } from '@/lib/client/api';
 import { snd } from '@/lib/client/sound';
 import { S, setDesk, useDesk } from '@/lib/client/store';
 import { MON } from '@/lib/shared/dates';
-import type { FeedItem, FeedSource } from '@/lib/shared/types';
+import { TOPICS, articleDocument, articleFileName, isTopic } from '@/lib/shared/feed';
+import type { FeedItem, SavedArticle } from '@/lib/shared/types';
 
 const READ_KEY = 'desk.feed.read';
+const PREFS_KEY = 'desk.feed.prefs';
+
+type Tab = 'discover' | 'saved';
 
 function loadRead(): Set<string> {
   try {
@@ -26,6 +30,23 @@ function saveRead(s: Set<string>) {
   }
 }
 
+function loadPrefs(): { tab: Tab; topic: number } {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+    return { tab: p.tab === 'saved' ? 'saved' : 'discover', topic: isTopic(Number(p.topic)) ? Number(p.topic) : 0 };
+  } catch {
+    return { tab: 'discover', topic: 0 };
+  }
+}
+
+function savePrefs(p: { tab: Tab; topic: number }) {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  } catch {
+    /* per-device convenience only */
+  }
+}
+
 /** "today", "yesterday", "3 Nov", "3 Nov 2025". */
 function rel(isoDate: string): string {
   if (!isoDate) return '';
@@ -37,54 +58,129 @@ function rel(isoDate: string): string {
   return `${d.getDate()} ${MON[d.getMonth()].slice(0, 3)}${d.getFullYear() !== now.getFullYear() ? ' ' + d.getFullYear() : ''}`;
 }
 
-/** feed.app — scroll your Substacks, read posts in place. */
+/** Hands the article over as a self-contained .html file: the share sheet on phones (Save to Files), a download elsewhere. */
+async function downloadArticle(it: FeedItem, html: string) {
+  const name = articleFileName(it.title);
+  const file = new File([articleDocument({ ...it, html })], name, { type: 'text/html' });
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: it.title });
+      return;
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError') return;
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  snd('key');
+  toast(`Downloaded ${name}`);
+}
+
+function Card({ it, on, rd, when, onOpen }: { it: FeedItem; on: boolean; rd: boolean; when: string; onOpen: () => void }) {
+  return (
+    <button type="button" className={`fcard ${rd ? 'rd' : ''} ${on ? 'on' : ''}`} onClick={onOpen}>
+      <span className="ftxt">
+        <span className="fmeta">
+          {it.sourceImage && <img src={it.sourceImage} alt="" loading="lazy" />}
+          <span>
+            {it.sourceTitle}
+            {when ? ` · ${when}` : ''}
+          </span>
+        </span>
+        <b>{it.title}</b>
+        {it.subtitle && <span className="fsub">{it.subtitle}</span>}
+      </span>
+      {it.image && <img className="fimg" src={it.image} alt="" loading="lazy" />}
+    </button>
+  );
+}
+
+/** feed.app — random posts from across Substack, a fresh set every time it opens; save or download the ones you like. */
 export function FeedWin() {
-  const [data, setData] = useState<{ sources: FeedSource[]; items: FeedItem[] } | null>(null);
+  const [tab, setTab] = useState<Tab>(() => loadPrefs().tab);
+  const [topic, setTopic] = useState<number>(() => loadPrefs().topic);
+  const [items, setItems] = useState<FeedItem[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState('');
-  const [sel, setSel] = useState<string | null>(null);
+  const [saved, setSaved] = useState<SavedArticle[] | null>(null);
+  const [savedErr, setSavedErr] = useState('');
+  const [sel, setSel] = useState<FeedItem | null>(null);
   const [articles, setArticles] = useState<Record<string, string>>({});
   const [artErr, setArtErr] = useState('');
-  const [msg, setMsg] = useState('');
-  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState('');
   const [read, setRead] = useState<Set<string>>(() => loadRead());
-  const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const reader = useRef<HTMLDivElement>(null);
+  const seq = useRef(0);
   const tick = useDesk((s) => s.feedTick);
 
-  const load = useCallback(async (fresh = false) => {
+  const savedIds = useMemo(() => new Set((saved ?? []).map((x) => x.id)), [saved]);
+
+  const shuffle = useCallback(async (t: number) => {
+    const n = ++seq.current;
     setLoading(true);
-    const r = await call<{ sources: FeedSource[]; items: FeedItem[] }>('/api/feed' + (fresh ? '?fresh=1' : ''));
+    setError('');
+    const r = await call<{ items: FeedItem[] }>('/api/feed' + (t ? `?topic=${t}` : ''));
+    if (n !== seq.current) return; // a newer shuffle has started
     setLoading(false);
     if (r.ok) {
-      setData(r.data);
-      setError('');
-      setDesk({ feedN: { posts: r.data.items.length, sources: r.data.sources.length } });
-    } else setError('Couldn’t load your feed — check your connection.');
+      setItems(r.data.items);
+      list.current?.scrollTo({ top: 0 });
+    } else setError(r.error || 'Couldn’t reach Substack — check your connection and Shuffle again.');
   }, []);
 
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), 15 * 60e3);
-    return () => clearInterval(t);
-  }, [load]);
+  const loadSaved = useCallback(async () => {
+    const r = await call<{ saved: SavedArticle[] }>('/api/feed/saved');
+    if (r.ok) {
+      setSaved(r.data.saved);
+      setSavedErr('');
+    } else setSavedErr('Couldn’t load your saved articles.');
+  }, []);
 
-  // The footer's Refresh button.
-  const first = useRef(true);
+  // A fresh random set every time the app opens.
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    void load(true);
-  }, [tick, load]);
+    void shuffle(loadPrefs().topic);
+    void loadSaved();
+  }, [shuffle, loadSaved]);
 
-  const items = useMemo(() => (data?.items ?? []).filter((x) => !filter || x.sourceId === filter), [data, filter]);
-  const current = sel ? (data?.items.find((x) => x.id === sel) ?? null) : null;
+  // The footer's Shuffle button (only a new tick triggers this, so the topic is read through a ref).
+  const topicRef = useRef(topic);
+  topicRef.current = topic;
+  const lastTick = useRef(tick);
+  useEffect(() => {
+    if (tick === lastTick.current) return;
+    lastTick.current = tick;
+    setTab('discover');
+    savePrefs({ tab: 'discover', topic: topicRef.current });
+    void shuffle(topicRef.current);
+  }, [tick, shuffle]);
+
+  useEffect(() => {
+    setDesk({ feedN: { posts: items?.length ?? 0, saved: saved?.length ?? 0 } });
+  }, [items, saved]);
+
+  const pickTab = (t: Tab) => {
+    setTab(t);
+    savePrefs({ tab: t, topic });
+    snd('tick');
+    if (t === 'saved') void loadSaved();
+  };
+
+  const pickTopic = (t: number) => {
+    setTopic(t);
+    savePrefs({ tab, topic: t });
+    snd('tick');
+    void shuffle(t);
+  };
 
   const open = async (it: FeedItem) => {
-    setSel(it.id);
+    setSel(it);
     setArtErr('');
     snd('tick');
     if (!read.has(it.id)) {
@@ -94,115 +190,132 @@ export function FeedWin() {
     }
     reader.current?.scrollTo({ top: 0 });
     if (articles[it.id] !== undefined) return;
-    const r = await call<{ html: string }>(`/api/feed/article?id=${it.id}`);
-    if (r.ok) setArticles((a) => ({ ...a, [it.id]: r.data.html }));
-    else setArtErr(r.error || 'Couldn’t load this post.');
+    // A saved article opens from its kept copy; anything else straight from Substack.
+    const r = savedIds.has(it.id)
+      ? await call<{ article: SavedArticle }>(`/api/feed/saved?id=${it.id}`).then((x) => (x.ok ? { ok: true as const, html: x.data.article.html ?? '' } : x))
+      : await call<{ html: string }>(`/api/feed/article?feed=${encodeURIComponent(it.feed)}&id=${it.id}`).then((x) => (x.ok ? { ok: true as const, html: x.data.html } : x));
+    if (r.ok) setArticles((a) => ({ ...a, [it.id]: r.html }));
+    else setArtErr(r.error || 'Couldn’t load this post — check your connection.');
   };
 
-  const add = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const v = input.current?.value.trim();
-    if (!v || adding) return;
-    setAdding(true);
-    setMsg('Looking for that Substack…');
-    const r = await post<{ source: FeedSource }>('/api/feed/sources', { input: v });
-    setAdding(false);
+  const toggleSave = async (it: FeedItem) => {
+    if (busy) return;
+    if (savedIds.has(it.id)) {
+      if (!window.confirm(`Remove “${it.title}” from Saved?`)) return;
+      setBusy(it.id);
+      const r = await call(`/api/feed/saved?id=${it.id}`, { method: 'DELETE' });
+      setBusy('');
+      if (r.ok) {
+        setSaved((s) => (s ?? []).filter((x) => x.id !== it.id));
+        snd('del');
+        toast('Removed from Saved');
+      } else toast('Couldn’t remove it — try again.');
+      return;
+    }
+    setBusy(it.id);
+    const r = await post<{ article: SavedArticle }>('/api/feed/saved', { feed: it.feed, id: it.id });
+    setBusy('');
     if (r.ok) {
-      setMsg(`Added ${r.data.source.title}.`);
-      if (input.current) input.current.value = '';
+      setSaved((s) => [r.data.article, ...(s ?? []).filter((x) => x.id !== it.id)]);
       snd('key');
-      void load();
+      toast('Saved — it’s in the Saved tab');
     } else {
-      setMsg(r.error || 'Couldn’t add that.');
       snd('err');
+      toast(r.error || 'Couldn’t save it — try again.');
     }
   };
 
-  const remove = async (s: FeedSource) => {
-    if (!window.confirm(`Stop following ${s.title}?`)) return;
-    const r = await call(`/api/feed/sources?id=${encodeURIComponent(s.id)}`, { method: 'DELETE' });
-    if (r.ok) {
-      if (filter === s.id) setFilter('');
-      snd('del');
-      void load();
-    }
-  };
-
-  const sources = data?.sources ?? [];
+  const current = sel;
   const html = current ? articles[current.id] : undefined;
+  const isSaved = !!current && savedIds.has(current.id);
 
   return (
     <div className={`fd ${current ? 'has' : ''}`}>
-      <div className="flist">
-        <form className="qa" onSubmit={add}>
-          <input ref={input} name="q" placeholder="Add a Substack — name or address" aria-label="Add a Substack" autoComplete="off" />
-          <button className="btn" disabled={adding}>
-            {adding ? '…' : 'Add'}
+      <div className="flist" ref={list}>
+        <div className="ftabs" role="group" aria-label="Show">
+          <button type="button" aria-pressed={tab === 'discover'} onClick={() => pickTab('discover')}>
+            Discover
           </button>
-        </form>
-        {msg && (
-          <p className="tnow" role="status">
-            {msg}
-          </p>
-        )}
-        {sources.length > 0 && (
-          <div className="fsrc" role="group" aria-label="Show">
-            <button type="button" className={!filter ? 'on' : ''} aria-pressed={!filter} onClick={() => (setFilter(''), snd('tick'))}>
-              All
-            </button>
-            {sources.map((s) => (
-              <span key={s.id} className={`fchip ${filter === s.id ? 'on' : ''} ${s.error ? 'bad' : ''}`} title={s.error || s.url}>
-                <button type="button" aria-pressed={filter === s.id} onClick={() => (setFilter(s.id), snd('tick'))}>
-                  {s.title || s.url}
-                </button>
-                <button type="button" className="fx" aria-label={`Stop following ${s.title}`} onClick={() => void remove(s)}>
-                  ×
-                </button>
-              </span>
+          <button type="button" aria-pressed={tab === 'saved'} onClick={() => pickTab('saved')}>
+            Saved{saved?.length ? ` · ${saved.length}` : ''}
+          </button>
+        </div>
+
+        {tab === 'discover' ? (
+          <>
+            <label className="ftopic">
+              <span>Topic</span>
+              <select className="in" value={topic} onChange={(e) => pickTopic(Number(e.target.value))}>
+                <option value={0}>Any — surprise me</option>
+                {TOPICS.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {loading ? (
+              <div aria-busy="true">
+                <p className="tnow" role="status">
+                  Finding random posts…
+                </p>
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div key={i} className="fskel" />
+                ))}
+              </div>
+            ) : error ? (
+              <p className="empty">{error}</p>
+            ) : (
+              <>
+                {(items ?? []).map((it) => (
+                  <Card key={it.id} it={it} on={it.id === sel?.id} rd={read.has(it.id)} when={rel(it.date)} onOpen={() => void open(it)} />
+                ))}
+              </>
+            )}
+            {!loading && (
+              <button type="button" className="btn gh fmore" onClick={() => (snd('click'), void shuffle(topic))}>
+                Shuffle — new random posts ↻
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            {savedErr && <p className="empty">{savedErr}</p>}
+            {!saved && !savedErr && <p className="empty">Loading…</p>}
+            {saved && !saved.length && <p className="empty">Nothing saved yet. Open a post and tap ♡ Save to keep it here — it stays readable even if the post is taken down.</p>}
+            {(saved ?? []).map((it) => (
+              <Card key={it.id} it={it} on={it.id === sel?.id} rd={false} when={`saved ${rel(it.savedAt)}`} onOpen={() => void open(it)} />
             ))}
-          </div>
+          </>
         )}
-        {error && <p className="empty">{error}</p>}
-        {!data && !error && <p className="empty">{loading ? 'Loading your feed…' : ''}</p>}
-        {data && !sources.length && (
-          <p className="empty">Add a Substack above: a name like “lenny”, an address like “name.substack.com”, or its own domain.</p>
-        )}
-        {items.map((it) => (
-          <button key={it.id} type="button" className={`fcard ${read.has(it.id) ? 'rd' : ''} ${it.id === sel ? 'on' : ''}`} onClick={() => void open(it)}>
-            <span className="ftxt">
-              <span className="fmeta">
-                {it.sourceImage && <img src={it.sourceImage} alt="" loading="lazy" />}
-                {it.sourceTitle} · {rel(it.date)}
-              </span>
-              <b>{it.title}</b>
-              {it.subtitle && <span className="fsub">{it.subtitle}</span>}
-            </span>
-            {it.image && <img className="fimg" src={it.image} alt="" loading="lazy" />}
-          </button>
-        ))}
-        {data && sources.length > 0 && !items.length && <p className="empty">No posts yet.</p>}
       </div>
 
       <div className="fread" ref={reader}>
         {current ? (
           <article key={current.id}>
             <button type="button" className="nback" onClick={() => setSel(null)}>
-              ‹ All posts
+              ‹ Back
             </button>
             <p className="fmeta">
               {current.sourceImage && <img src={current.sourceImage} alt="" />}
-              {current.sourceTitle}
-              {current.author ? ` · ${current.author}` : ''} · {rel(current.date)}
+              <span>
+                {current.sourceTitle}
+                {current.author ? ` · ${current.author}` : ''}
+                {current.date ? ` · ${rel(current.date)}` : ''}
+              </span>
             </p>
             <h2>{current.title}</h2>
             {current.subtitle && <p className="fsub2">{current.subtitle}</p>}
             <div className="fbar">
+              <button type="button" className={`btn gh ${isSaved ? 'on' : ''}`} aria-pressed={isSaved} disabled={busy === current.id} onClick={() => void toggleSave(current)}>
+                {busy === current.id ? '…' : isSaved ? '♥ Saved' : '♡ Save'}
+              </button>
+              <button type="button" className="btn gh" disabled={html === undefined} onClick={() => html !== undefined && void downloadArticle(current, html)}>
+                Download ⤓
+              </button>
               <a className="btn gh" href={current.link} target="_blank" rel="noopener noreferrer">
                 Open on Substack ↗
               </a>
-              <button type="button" className="btn gh" onClick={() => saveToNotebook(current.title, `${current.link}\n\n${current.subtitle}`.trim())}>
-                Save to notebook
-              </button>
             </div>
             {html !== undefined ? (
               // Cleaned on the server (sanitize-html): no scripts, styles, frames or event handlers.
@@ -224,7 +337,7 @@ export function FeedFooter() {
   return (
     <>
       <span>
-        {n.posts} post{n.posts === 1 ? '' : 's'} from {n.sources} Substack{n.sources === 1 ? '' : 's'}
+        {n.posts} random post{n.posts === 1 ? '' : 's'} · {n.saved} saved
       </span>
       <button
         type="button"
@@ -233,7 +346,7 @@ export function FeedFooter() {
           snd('click');
         }}
       >
-        Refresh ↻
+        Shuffle ↻
       </button>
     </>
   );

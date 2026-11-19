@@ -1,8 +1,9 @@
 import 'server-only';
-import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
-import type { Alarm, Backup, FeedSource, ChatMessage, DeskDelta, DeskState, Item, Note, Settings, SettingsPatch, TimeEntry, WinLayout } from '@/lib/shared/types';
+import { and, asc, desc, eq, getTableColumns, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import type { Alarm, Backup, ChatMessage, FeedItem, SavedArticle, DeskDelta, DeskState, Item, Note, Settings, SettingsPatch, TimeEntry, WinLayout } from '@/lib/shared/types';
 import type { DB } from './db/client';
-import { alarms, chatMessages, feedSources, items, notes, settings, timeEntries, windowLayout } from './db/schema';
+import { alarms, chatMessages, items, notes, savedArticles, settings, timeEntries, windowLayout } from './db/schema';
+import { feedUrl, sanitizeArticle } from './feeds';
 import { AlarmIn, EntryIn, ItemIn, LayoutIn, NoteIn, SettingsPatchIn, normalizeImportedEntry, normalizeImportedItem } from './validate';
 
 type ItemRow = typeof items.$inferSelect;
@@ -472,7 +473,7 @@ export async function exportAll(db: DB): Promise<Backup> {
     settings: { p1: st.p1, p2: st.p2, theme: st.theme, sound: st.sound },
     chat,
     layout: await getLayout(db),
-    feeds: (await listFeedSources(db)).map(({ url, title, site, image }) => ({ url, title, site, image })),
+    saved: (await db.select().from(savedArticles).orderBy(asc(savedArticles.savedAt))).map((r) => toSaved(r, true)),
   };
 }
 
@@ -561,35 +562,81 @@ export async function importBackup(db: DB, raw: unknown): Promise<{ items: numbe
     if (ls.length) await putLayout(db, ls);
   }
 
-  const feeds = (raw as { feeds?: unknown }).feeds;
-  if (Array.isArray(feeds)) {
-    for (const f of feeds as Partial<FeedSource>[]) {
-      if (f && typeof f.url === 'string' && /^https:\/\/\S+$/.test(f.url)) {
-        await addFeedSource(db, { url: f.url, title: String(f.title ?? '').slice(0, 200), site: String(f.site ?? '').slice(0, 500), image: String(f.image ?? '').slice(0, 500) });
-      }
+  const saved = (raw as { saved?: unknown }).saved;
+  if (Array.isArray(saved)) {
+    for (const x of saved as Partial<SavedArticle>[]) {
+      const feed = feedUrl(String(x?.feed ?? ''));
+      if (!x || !feed || typeof x.id !== 'string' || !/^[0-9a-f]{16}$/.test(x.id) || typeof x.link !== 'string' || !/^https?:\/\/\S+$/.test(x.link)) continue;
+      const at = new Date(String(x.savedAt ?? ''));
+      await saveArticle(
+        db,
+        {
+          id: x.id,
+          feed,
+          link: x.link.slice(0, 2000),
+          title: String(x.title ?? '').slice(0, 300) || 'Untitled',
+          subtitle: String(x.subtitle ?? '').slice(0, 280),
+          author: String(x.author ?? '').slice(0, 120),
+          sourceTitle: String(x.sourceTitle ?? '').slice(0, 200),
+          sourceImage: /^https:\/\//.test(String(x.sourceImage ?? '')) ? String(x.sourceImage).slice(0, 2000) : '',
+          image: /^https:\/\//.test(String(x.image ?? '')) ? String(x.image).slice(0, 2000) : '',
+          date: Number.isNaN(new Date(String(x.date ?? '')).getTime()) ? '' : new Date(String(x.date)).toISOString(),
+        },
+        // A backup file could have been edited by hand, so the HTML is cleaned again on the way in.
+        sanitizeArticle(String(x.html ?? '')),
+        Number.isNaN(at.getTime()) ? undefined : at,
+      );
     }
   }
 
   return { items: good.length, entries: entriesIn, notes: notesIn, alarms: alarmsIn, skipped };
 }
 
-// ---------------------------------------------------------------- feed.app subscriptions
+// ---------------------------------------------------------------- feed.app saved articles
 
-export async function listFeedSources(db: DB): Promise<FeedSource[]> {
-  const rows = await db.select().from(feedSources).orderBy(asc(feedSources.createdAt));
-  return rows.map((r) => ({ id: r.id, url: r.url, title: r.title, site: r.site, image: r.image }));
+type SavedRow = typeof savedArticles.$inferSelect;
+
+function toSaved(r: SavedRow, withHtml = false): SavedArticle {
+  const a: SavedArticle = {
+    id: r.id,
+    feed: r.feed,
+    link: r.link,
+    title: r.title,
+    subtitle: r.subtitle,
+    author: r.author,
+    sourceTitle: r.sourceTitle,
+    sourceImage: r.sourceImage,
+    image: r.image,
+    date: r.date,
+    savedAt: r.savedAt.toISOString(),
+  };
+  if (withHtml) a.html = r.html;
+  return a;
 }
 
-/** Adds a source (or returns the existing one with the same feed URL). */
-export async function addFeedSource(db: DB, s: Omit<FeedSource, 'id' | 'error'>): Promise<FeedSource> {
+/** Saved articles, newest first, without their HTML. */
+export async function listSaved(db: DB): Promise<SavedArticle[]> {
+  const { html: _html, ...cols } = getTableColumns(savedArticles);
+  void _html;
+  const rows = await db.select(cols).from(savedArticles).orderBy(desc(savedArticles.savedAt));
+  return rows.map((r) => toSaved({ ...r, html: '' }));
+}
+
+export async function getSaved(db: DB, id: string): Promise<SavedArticle | null> {
+  const [r] = await db.select().from(savedArticles).where(eq(savedArticles.id, id));
+  return r ? toSaved(r, true) : null;
+}
+
+/** Saves (or re-saves) an article. `html` must already be cleaned with sanitizeArticle. */
+export async function saveArticle(db: DB, item: FeedItem, html: string, savedAt?: Date): Promise<SavedArticle> {
+  const row = { ...item, html, ...(savedAt ? { savedAt } : {}) };
   await db
-    .insert(feedSources)
-    .values({ id: 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ...s })
-    .onConflictDoNothing({ target: feedSources.url });
-  const [r] = await db.select().from(feedSources).where(eq(feedSources.url, s.url));
-  return { id: r.id, url: r.url, title: r.title, site: r.site, image: r.image };
+    .insert(savedArticles)
+    .values(row)
+    .onConflictDoUpdate({ target: savedArticles.id, set: { ...row, savedAt: savedAt ?? new Date() } });
+  return (await getSaved(db, item.id))!;
 }
 
-export async function removeFeedSource(db: DB, id: string) {
-  await db.delete(feedSources).where(eq(feedSources.id, id));
+export async function unsaveArticle(db: DB, id: string) {
+  await db.delete(savedArticles).where(eq(savedArticles.id, id));
 }

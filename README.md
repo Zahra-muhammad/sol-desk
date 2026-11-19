@@ -172,6 +172,19 @@ You can also change the password while you're logged in: **Tools → Change pass
 
 The model can call an `add_items` tool. It's told to add items only when you ask. The items appear on the calendar straight away, and the reply shows "✓ Added n to your calendar". If the main model declines a request, Anthropic's server-side fallback retries it on another model.
 
+### feed.app (random Substack articles)
+
+Every time feed.app opens, and whenever you tap **Shuffle**, it shows a fresh random set of posts from across Substack. Pick a **Topic** to narrow it down, or leave it on **Any**.
+
+- **How posts are picked.** The server picks random Substack categories, random pages of Substack's public directory (`substack.com/api/v1/category/public/<id>/all`), random English publications from those pages, and then random articles from each publication's RSS feed. Long posts are preferred over short notes and podcast stubs.
+  - If the directory can't be reached, it falls back to a built-in list of popular publications (`SEED_HOSTS` in `lib/server/feeds.ts`).
+- **Save ♡** keeps a cleaned copy of the article in the database (`saved_articles`). It's listed in the **Saved** tab and stays readable even if the post is taken down. Saved articles are included in backups.
+- **Download ⤓** gives you a self-contained `.html` file of the article that opens in any browser, offline included. On an iPhone it opens the share sheet, where you choose **Save to Files**. Images still load from Substack, so they need a connection.
+- **Safety.**
+  - The server only fetches plain `https://host/feed` addresses (and Substack's directory). It checks that every hop resolves to a public address, with timeouts and size caps.
+  - Only feeds that say they come from Substack are read.
+  - Article HTML is cleaned with sanitize-html before it reaches the page or the database. Backups are cleaned again on import.
+
 ### Sounds
 
 Every sound is a short mechanical click made with the Web Audio API, with no audio files. Each click is a low sine "thump" plus band-passed noise. There is one AudioContext and a master gain of 0.8, at most one sound per 30 ms, and mute is remembered. The recipes are in `lib/client/sound.ts`:
