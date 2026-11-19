@@ -29,6 +29,13 @@
       "when": 1795000620854,
       "tag": "0003_alarms_and_chat_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795109452885,
+      "tag": "0004_feed_sources",
+      "breakpoints": true
     }
   ]
 }

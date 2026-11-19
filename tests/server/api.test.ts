@@ -1,5 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as activityRoute from '@/app/api/activity/route';
+import * as feedRoute from '@/app/api/feed/route';
+import * as feedArticle from '@/app/api/feed/article/route';
+import * as feedSourcesRoute from '@/app/api/feed/sources/route';
 import * as backupRoute from '@/app/api/backup/route';
 import * as chatClear from '@/app/api/chat/clear/route';
 import * as heartbeat from '@/app/api/auth/heartbeat/route';
@@ -54,6 +57,10 @@ describe('nothing without a session', () => {
   const routes: [string, (r: Request) => Promise<Response>, string][] = [
     ['GET', stateRoute.GET, '/api/state'],
     ['GET', activityRoute.GET, '/api/activity?year=2026'],
+    ['GET', feedRoute.GET, '/api/feed'],
+    ['GET', feedArticle.GET, '/api/feed/article?id=0123456789abcdef'],
+    ['POST', feedSourcesRoute.POST, '/api/feed/sources'],
+    ['DELETE', feedSourcesRoute.DELETE, '/api/feed/sources?id=x'],
     ['GET', syncRoute.GET, '/api/sync?since=2020-01-01T00:00:00Z'],
     ['POST', syncRoute.POST, '/api/sync'],
     ['GET', backupRoute.GET, '/api/backup'],

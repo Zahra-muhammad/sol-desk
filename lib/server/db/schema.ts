@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, date, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 const tz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
@@ -89,6 +89,21 @@ export const alarms = pgTable(
     syncedAt: tz('synced_at').notNull().defaultNow(),
   },
   (t) => [index('alarms_synced_at_idx').on(t.syncedAt), index('alarms_at_idx').on(t.at)],
+);
+
+/** Substacks (RSS feeds) shown in feed.app. */
+export const feedSources = pgTable(
+  'feed_sources',
+  {
+    id: text('id').primaryKey(),
+    /** The RSS address, e.g. https://name.substack.com/feed */
+    url: text('url').notNull(),
+    title: text('title').notNull().default(''),
+    site: text('site').notNull().default(''),
+    image: text('image').notNull().default(''),
+    createdAt: tz('created_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('feed_sources_url_idx').on(t.url)],
 );
 
 /** One row: project names and notes, theme, sound. */

@@ -86,7 +86,7 @@ export function Ascii() {
       oc.font = `800 ${fs}px ${sans}`;
       oc.textAlign = 'center';
       oc.textBaseline = 'middle';
-      const iconsW = innerWidth > 760 ? 190 / cw : 0;
+      const iconsW = innerWidth > 760 ? 150 / cw : 0;
       oc.fillText(word, (cols - iconsW) / 2 + cols * 0.04, rows * 0.56);
       const px = oc.getImageData(0, 0, cols, rows).data;
       const grid: [number, number, string, number][] = [];

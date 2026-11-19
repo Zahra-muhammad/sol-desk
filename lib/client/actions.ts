@@ -35,21 +35,24 @@ export interface WinDef {
   flush?: boolean;
 }
 
+// Compact defaults so more of the desk shows. Bump LAYOUT_VERSION when these change to shrink saved windows once.
 export const W: Record<WinKey, WinDef> = {
-  today: { n: 'today.md', icon: 'file', w: 350, h: 470 },
-  calendar: { n: 'calendar.app', icon: 'app', w: 640, h: 520 },
-  meetings: { n: 'meetings.txt', icon: 'file', w: 420, h: 520 },
-  todo: { n: 'to-do.md', icon: 'file', w: 440, h: 500 },
-  p1: { n: 'p1', icon: 'dir', w: 400, h: 520 },
-  p2: { n: 'p2', icon: 'dir', w: 400, h: 520 },
-  future: { n: 'future.md', icon: 'file', w: 440, h: 540 },
-  chat: { n: 'planner.chat', icon: 'app', w: 400, h: 540, flush: true },
-  timer: { n: 'timer.app', icon: 'app', w: 380, h: 560 },
-  notes: { n: 'notebook.md', icon: 'file', w: 600, h: 520, flush: true },
-  alarms: { n: 'alarms.app', icon: 'app', w: 380, h: 500 },
-  activity: { n: 'activity.app', icon: 'app', w: 820, h: 580 },
-  form: { n: 'new.md', icon: 'file', w: 420, h: 'auto' },
+  today: { n: 'today.md', icon: 'file', w: 310, h: 410 },
+  calendar: { n: 'calendar.app', icon: 'app', w: 540, h: 440 },
+  meetings: { n: 'meetings.txt', icon: 'file', w: 360, h: 440 },
+  todo: { n: 'to-do.md', icon: 'file', w: 370, h: 430 },
+  p1: { n: 'p1', icon: 'dir', w: 340, h: 440 },
+  p2: { n: 'p2', icon: 'dir', w: 340, h: 440 },
+  future: { n: 'future.md', icon: 'file', w: 370, h: 450 },
+  chat: { n: 'planner.chat', icon: 'app', w: 340, h: 460, flush: true },
+  timer: { n: 'timer.app', icon: 'app', w: 320, h: 460 },
+  notes: { n: 'notebook.md', icon: 'file', w: 520, h: 440, flush: true },
+  alarms: { n: 'alarms.app', icon: 'app', w: 320, h: 420 },
+  activity: { n: 'activity.app', icon: 'app', w: 800, h: 480 },
+  feed: { n: 'feed.app', icon: 'app', w: 660, h: 470, flush: true },
+  form: { n: 'new.md', icon: 'file', w: 380, h: 'auto' },
 };
+export const LAYOUT_VERSION = '2';
 
 export const ICONS: [WinKey, string][] = [
   ['today', 'today'],
@@ -64,6 +67,7 @@ export const ICONS: [WinKey, string][] = [
   ['notes', 'notebook'],
   ['alarms', 'alarms'],
   ['activity', 'activity'],
+  ['feed', 'feed'],
 ];
 
 export const iconLabel = (k: WinKey, s: Settings) => (k === 'p1' ? s.p1.name : k === 'p2' ? s.p2.name : ICONS.find((x) => x[0] === k)?.[1] ?? k);
@@ -88,17 +92,18 @@ export function defaultPos(k: WinKey): Geo {
   const w = W[k].w;
   const P: Record<WinKey, [number, number]> = {
     today: [16, 16],
-    calendar: [Math.max(16, dw - 200 - w - 30), 40],
+    calendar: [Math.max(16, dw - 160 - w - 30), 40],
     meetings: [390, 60],
     todo: [16, 330],
     p1: [420, 90],
     p2: [460, 120],
     future: [500, 50],
-    chat: [Math.max(16, dw - 200 - 400), 70],
-    timer: [Math.max(16, dw - 200 - 380 - 40), 100],
+    chat: [Math.max(16, dw - 160 - 400), 70],
+    timer: [Math.max(16, dw - 160 - 380 - 40), 100],
     notes: [Math.max(16, dw / 2 - 300), 60],
-    alarms: [Math.max(16, dw - 200 - 380 - 70), 130],
-    activity: [Math.max(16, (dw - 200) / 2 - 410), 70],
+    alarms: [Math.max(16, dw - 160 - 380 - 70), 130],
+    activity: [Math.max(16, (dw - 160) / 2 - 410), 70],
+    feed: [Math.max(16, (dw - 160) / 2 - 380), 50],
     form: [Math.max(16, dw / 2 - 210), 80],
   };
   const [x, y] = P[k];
@@ -106,7 +111,8 @@ export function defaultPos(k: WinKey): Geo {
     x: Math.min(x, Math.max(8, dw - w - 8)),
     y: Math.min(y, Math.max(8, dh - 200)),
     w,
-    h: W[k].h === 'auto' ? null : Math.min(W[k].h as number, dh - 24),
+    // Never taller than 80% of the desk.
+    h: W[k].h === 'auto' ? null : Math.min(W[k].h as number, Math.round(dh * 0.8)),
   };
 }
 
@@ -434,6 +440,14 @@ export function newNote() {
   setTimeout(() => (document.querySelector('#w-notes .ntitle') as HTMLInputElement | null)?.focus(), 40);
 }
 
+/** Save something (e.g. a feed article) as a new notebook page. */
+export function saveToNotebook(title: string, body: string) {
+  const now = new Date().toISOString();
+  saveRec('notes', { id: uid(), title: title.slice(0, 300), body, createdAt: now, updatedAt: now, deletedAt: null });
+  toast(`Saved “${title.length > 40 ? title.slice(0, 39) + '…' : title}” to your notebook`);
+  snd('key');
+}
+
 export function updateNote(id: string, p: Partial<Pick<Note, 'title' | 'body'>>) {
   const n = S().notes[id];
   if (!n) return;
@@ -713,8 +727,17 @@ export function loadState(state: DeskState, fresh: boolean) {
 
   if (fresh && !S().open.length) {
     const geo: Partial<Record<WinKey, Geo>> = {};
+    // Once per layout version (per device), shrink saved windows to the current compact defaults.
+    let resetSizes = false;
+    try {
+      resetSizes = localStorage.getItem('desk.layoutv') !== LAYOUT_VERSION;
+      localStorage.setItem('desk.layoutv', LAYOUT_VERSION);
+    } catch {
+      /* ignore */
+    }
     for (const l of state.layout) {
-      geo[l.key] = { x: l.x, y: l.y, w: l.w, h: l.h };
+      const d = W[l.key];
+      geo[l.key] = resetSizes ? { x: l.x, y: l.y, w: d.w, h: d.h === 'auto' ? null : (d.h as number) } : { x: l.x, y: l.y, w: l.w, h: l.h };
       lastLayout[l.key] = JSON.stringify(l);
     }
     setDesk({ geo });

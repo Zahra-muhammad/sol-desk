@@ -1,8 +1,8 @@
 import 'server-only';
 import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
-import type { Alarm, Backup, ChatMessage, DeskDelta, DeskState, Item, Note, Settings, SettingsPatch, TimeEntry, WinLayout } from '@/lib/shared/types';
+import type { Alarm, Backup, FeedSource, ChatMessage, DeskDelta, DeskState, Item, Note, Settings, SettingsPatch, TimeEntry, WinLayout } from '@/lib/shared/types';
 import type { DB } from './db/client';
-import { alarms, chatMessages, items, notes, settings, timeEntries, windowLayout } from './db/schema';
+import { alarms, chatMessages, feedSources, items, notes, settings, timeEntries, windowLayout } from './db/schema';
 import { AlarmIn, EntryIn, ItemIn, LayoutIn, NoteIn, SettingsPatchIn, normalizeImportedEntry, normalizeImportedItem } from './validate';
 
 type ItemRow = typeof items.$inferSelect;
@@ -472,6 +472,7 @@ export async function exportAll(db: DB): Promise<Backup> {
     settings: { p1: st.p1, p2: st.p2, theme: st.theme, sound: st.sound },
     chat,
     layout: await getLayout(db),
+    feeds: (await listFeedSources(db)).map(({ url, title, site, image }) => ({ url, title, site, image })),
   };
 }
 
@@ -560,5 +561,35 @@ export async function importBackup(db: DB, raw: unknown): Promise<{ items: numbe
     if (ls.length) await putLayout(db, ls);
   }
 
+  const feeds = (raw as { feeds?: unknown }).feeds;
+  if (Array.isArray(feeds)) {
+    for (const f of feeds as Partial<FeedSource>[]) {
+      if (f && typeof f.url === 'string' && /^https:\/\/\S+$/.test(f.url)) {
+        await addFeedSource(db, { url: f.url, title: String(f.title ?? '').slice(0, 200), site: String(f.site ?? '').slice(0, 500), image: String(f.image ?? '').slice(0, 500) });
+      }
+    }
+  }
+
   return { items: good.length, entries: entriesIn, notes: notesIn, alarms: alarmsIn, skipped };
+}
+
+// ---------------------------------------------------------------- feed.app subscriptions
+
+export async function listFeedSources(db: DB): Promise<FeedSource[]> {
+  const rows = await db.select().from(feedSources).orderBy(asc(feedSources.createdAt));
+  return rows.map((r) => ({ id: r.id, url: r.url, title: r.title, site: r.site, image: r.image }));
+}
+
+/** Adds a source (or returns the existing one with the same feed URL). */
+export async function addFeedSource(db: DB, s: Omit<FeedSource, 'id' | 'error'>): Promise<FeedSource> {
+  await db
+    .insert(feedSources)
+    .values({ id: 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ...s })
+    .onConflictDoNothing({ target: feedSources.url });
+  const [r] = await db.select().from(feedSources).where(eq(feedSources.url, s.url));
+  return { id: r.id, url: r.url, title: r.title, site: r.site, image: r.image };
+}
+
+export async function removeFeedSource(db: DB, id: string) {
+  await db.delete(feedSources).where(eq(feedSources.id, id));
 }

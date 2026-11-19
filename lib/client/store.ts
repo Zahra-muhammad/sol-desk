@@ -62,6 +62,9 @@ export interface DeskStore {
   /** activity.app: the year being shown and its per-day counts (fetched, not synced). */
   actYear: number;
   act: { year: number; days: YearActivity } | null;
+  /** feed.app: counts for the footer, and a counter the footer bumps to refresh. */
+  feedN: { posts: number; sources: number };
+  feedTick: number;
 
   menu: string | null;
   startOpen: boolean;
@@ -106,6 +109,8 @@ export const initialDesk = (): DeskStore => ({
   timerProject: '',
   actYear: new Date().getFullYear(),
   act: null,
+  feedN: { posts: 0, sources: 0 },
+  feedTick: 0,
   menu: null,
   startOpen: false,
   toast: null,

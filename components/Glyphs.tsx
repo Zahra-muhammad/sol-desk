@@ -194,6 +194,23 @@ export function Thumb({ k, style }: { k: WinKey; style?: React.CSSProperties }) 
         </>
       );
       break;
+    case 'feed':
+      // A newspaper page: orange masthead, a picture, lines of text.
+      body = (
+        <>
+          <rect width="62" height="50" fill="#2b2b2b" />
+          <rect x="9" y="6" width="44" height="38" rx="4" fill="#fbfbfb" />
+          <rect x="9" y="6" width="44" height="9" rx="4" fill="#ff6719" />
+          <rect x="9" y="11" width="44" height="4" fill="#ff6719" />
+          <rect x="14" y="19" width="16" height="12" rx="2" fill="#4c6bff" />
+          <rect x="33" y="19" width="15" height="2.6" rx="1" fill="#141414" />
+          <rect x="33" y="24" width="15" height="2" rx="1" fill="#bbb" />
+          <rect x="33" y="28" width="11" height="2" rx="1" fill="#bbb" />
+          <rect x="14" y="35" width="34" height="2" rx="1" fill="#bbb" />
+          <rect x="14" y="39" width="26" height="2" rx="1" fill="#bbb" />
+        </>
+      );
+      break;
     case 'activity':
       // A little GitHub-style contribution grid in greens.
       body = (

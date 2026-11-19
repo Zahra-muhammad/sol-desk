@@ -22,6 +22,7 @@ import type { Item, ItemType, ProjectKey } from '@/lib/shared/types';
 import { AutoNote } from './AutoNote';
 import { ActivityFooter, ActivityWin } from './ActivityWin';
 import { AlarmsFooter, AlarmsWin } from './AlarmsWin';
+import { FeedFooter, FeedWin } from './FeedWin';
 import { Notebook, NotebookFooter } from './Notebook';
 import { QuickAdd } from './QuickAdd';
 import { Row } from './Row';
@@ -798,6 +799,8 @@ export function WindowBody({ k }: { k: WinKey }) {
       return <AlarmsWin />;
     case 'activity':
       return <ActivityWin />;
+    case 'feed':
+      return <FeedWin />;
   }
 }
 
@@ -883,6 +886,8 @@ export function WindowFooter({ k }: { k: WinKey }) {
       return <AlarmsFooter />;
     case 'activity':
       return <ActivityFooter />;
+    case 'feed':
+      return <FeedFooter />;
     default:
       return null;
   }

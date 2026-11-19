@@ -98,7 +98,32 @@ export interface Alarm {
   deletedAt: string | null;
 }
 
-export const WINDOW_KEYS = ['today', 'calendar', 'meetings', 'todo', 'p1', 'p2', 'future', 'chat', 'timer', 'notes', 'alarms', 'activity'] as const;
+/** A Substack (RSS feed) in feed.app. */
+export interface FeedSource {
+  id: string;
+  url: string;
+  title: string;
+  site: string;
+  image: string;
+  /** Set when the last fetch failed. */
+  error?: string;
+}
+
+/** One post in the feed (the article body is fetched separately). */
+export interface FeedItem {
+  id: string;
+  sourceId: string;
+  sourceTitle: string;
+  sourceImage: string;
+  title: string;
+  subtitle: string;
+  author: string;
+  date: string;
+  image: string;
+  link: string;
+}
+
+export const WINDOW_KEYS = ['today', 'calendar', 'meetings', 'todo', 'p1', 'p2', 'future', 'chat', 'timer', 'notes', 'alarms', 'activity', 'feed'] as const;
 export type SavedWinKey = (typeof WINDOW_KEYS)[number];
 
 export interface WinLayout {
@@ -168,6 +193,8 @@ export interface Backup {
   settings: Omit<Settings, 'updatedAt'>;
   chat: ChatMessage[];
   layout: WinLayout[];
+  /** Subscribed Substacks (feed.app). */
+  feeds?: Pick<FeedSource, 'url' | 'title' | 'site' | 'image'>[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
