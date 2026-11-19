@@ -394,4 +394,4 @@ button,a,.row{-webkit-tap-highlight-color:transparent}
 /* ---- compact desk: keep the smaller calendar tidy ---- */
 .calh b{white-space:nowrap;font-size:18px}
 .calh .btn{padding:0 11px}
-@media (min-width:761px){.dc{min-height:52px}}
+@media (min-width:761px){.dc{min-height:46px}}
