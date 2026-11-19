@@ -194,6 +194,27 @@ export function Thumb({ k, style }: { k: WinKey; style?: React.CSSProperties }) 
         </>
       );
       break;
+    case 'activity':
+      // A little GitHub-style contribution grid in greens.
+      body = (
+        <>
+          <rect width="62" height="50" fill={BG} />
+          {[0, 1, 2, 3, 4, 5, 6].map((c) =>
+            [0, 1, 2, 3, 4].map((r) => (
+              <rect
+                key={c + '-' + r}
+                x={4 + c * 8}
+                y={6 + r * 8}
+                width="6"
+                height="6"
+                rx="1.2"
+                fill={['#26302a', '#0f6b2f', '#1c9a48', '#2fd06a', '#62ff8d'][(c * 3 + r * 5 + c * r) % 5]}
+              />
+            )),
+          )}
+        </>
+      );
+      break;
     case 'alarms':
       // A twin-bell alarm clock: yellow bells, red case, cream face.
       body = (

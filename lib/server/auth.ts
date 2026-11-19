@@ -158,6 +158,7 @@ export async function retryAfter(db: DB, now = new Date()): Promise<number> {
 /** Log every attempt with a timestamp and IP. */
 export async function recordAttempt(db: DB, ip: string | null, ok: boolean) {
   await db.insert(loginAttempts).values({ ip, ok });
-  if (!ok) await db.delete(loginAttempts).where(lt(loginAttempts.at, new Date(Date.now() - 30 * 864e5)));
+  // Prune old *failed* attempts only — successful logins are kept for the activity graph.
+  if (!ok) await db.delete(loginAttempts).where(and(eq(loginAttempts.ok, false), lt(loginAttempts.at, new Date(Date.now() - 30 * 864e5))));
   if (!ok) console.warn(`[auth] failed password attempt from ${ip ?? 'unknown'} at ${new Date().toISOString()}`);
 }

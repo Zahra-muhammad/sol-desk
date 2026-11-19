@@ -47,6 +47,7 @@ export const W: Record<WinKey, WinDef> = {
   timer: { n: 'timer.app', icon: 'app', w: 380, h: 560 },
   notes: { n: 'notebook.md', icon: 'file', w: 600, h: 520, flush: true },
   alarms: { n: 'alarms.app', icon: 'app', w: 380, h: 500 },
+  activity: { n: 'activity.app', icon: 'app', w: 820, h: 470 },
   form: { n: 'new.md', icon: 'file', w: 420, h: 'auto' },
 };
 
@@ -62,6 +63,7 @@ export const ICONS: [WinKey, string][] = [
   ['timer', 'timer'],
   ['notes', 'notebook'],
   ['alarms', 'alarms'],
+  ['activity', 'activity'],
 ];
 
 export const iconLabel = (k: WinKey, s: Settings) => (k === 'p1' ? s.p1.name : k === 'p2' ? s.p2.name : ICONS.find((x) => x[0] === k)?.[1] ?? k);
@@ -96,6 +98,7 @@ export function defaultPos(k: WinKey): Geo {
     timer: [Math.max(16, dw - 200 - 380 - 40), 100],
     notes: [Math.max(16, dw / 2 - 300), 60],
     alarms: [Math.max(16, dw - 200 - 380 - 70), 130],
+    activity: [Math.max(16, (dw - 200) / 2 - 410), 70],
     form: [Math.max(16, dw / 2 - 210), 80],
   };
   const [x, y] = P[k];

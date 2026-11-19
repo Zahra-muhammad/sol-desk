@@ -98,7 +98,7 @@ export interface Alarm {
   deletedAt: string | null;
 }
 
-export const WINDOW_KEYS = ['today', 'calendar', 'meetings', 'todo', 'p1', 'p2', 'future', 'chat', 'timer', 'notes', 'alarms'] as const;
+export const WINDOW_KEYS = ['today', 'calendar', 'meetings', 'todo', 'p1', 'p2', 'future', 'chat', 'timer', 'notes', 'alarms', 'activity'] as const;
 export type SavedWinKey = (typeof WINDOW_KEYS)[number];
 
 export interface WinLayout {

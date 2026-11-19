@@ -20,6 +20,7 @@ import { S, pname, setDesk, useDesk, type TodoFilter, type WinKey } from '@/lib/
 import { DOW, MON, TODAY, addD, fmtD, iso, pad, parse } from '@/lib/shared/dates';
 import type { Item, ItemType, ProjectKey } from '@/lib/shared/types';
 import { AutoNote } from './AutoNote';
+import { ActivityFooter, ActivityWin } from './ActivityWin';
 import { AlarmsFooter, AlarmsWin } from './AlarmsWin';
 import { Notebook, NotebookFooter } from './Notebook';
 import { QuickAdd } from './QuickAdd';
@@ -795,6 +796,8 @@ export function WindowBody({ k }: { k: WinKey }) {
       return <Notebook />;
     case 'alarms':
       return <AlarmsWin />;
+    case 'activity':
+      return <ActivityWin />;
   }
 }
 
@@ -878,6 +881,8 @@ export function WindowFooter({ k }: { k: WinKey }) {
       return <NotebookFooter />;
     case 'alarms':
       return <AlarmsFooter />;
+    case 'activity':
+      return <ActivityFooter />;
     default:
       return null;
   }

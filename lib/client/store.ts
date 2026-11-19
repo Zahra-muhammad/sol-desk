@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { TODAY, iso } from '@/lib/shared/dates';
 import { DEFAULT_SETTINGS, type Alarm, type ChatMessage, type Item, type Note, type ProjectKey, type SavedWinKey, type Settings, type TimeEntry } from '@/lib/shared/types';
+import type { YearActivity } from '@/lib/shared/activity';
 import type { Collection, SaveStatus } from './sync';
 
 export type WinKey = SavedWinKey | 'form';
@@ -58,6 +59,9 @@ export interface DeskStore {
   /** Timer: what the next timer is for. */
   timerLabel: string;
   timerProject: '' | ProjectKey;
+  /** activity.app: the year being shown and its per-day counts (fetched, not synced). */
+  actYear: number;
+  act: { year: number; days: YearActivity } | null;
 
   menu: string | null;
   startOpen: boolean;
@@ -100,6 +104,8 @@ export const initialDesk = (): DeskStore => ({
   noteQ: '',
   timerLabel: '',
   timerProject: '',
+  actYear: new Date().getFullYear(),
+  act: null,
   menu: null,
   startOpen: false,
   toast: null,

@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import * as activityRoute from '@/app/api/activity/route';
 import * as backupRoute from '@/app/api/backup/route';
 import * as chatClear from '@/app/api/chat/clear/route';
 import * as heartbeat from '@/app/api/auth/heartbeat/route';
@@ -52,6 +53,7 @@ beforeEach(async () => {
 describe('nothing without a session', () => {
   const routes: [string, (r: Request) => Promise<Response>, string][] = [
     ['GET', stateRoute.GET, '/api/state'],
+    ['GET', activityRoute.GET, '/api/activity?year=2026'],
     ['GET', syncRoute.GET, '/api/sync?since=2020-01-01T00:00:00Z'],
     ['POST', syncRoute.POST, '/api/sync'],
     ['GET', backupRoute.GET, '/api/backup'],
