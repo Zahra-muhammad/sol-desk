@@ -6,7 +6,7 @@ import { call, post } from '@/lib/client/api';
 import { snd } from '@/lib/client/sound';
 import { S, setDesk, useDesk } from '@/lib/client/store';
 import { MON } from '@/lib/shared/dates';
-import { TOPICS, articleDocument, articleFileName, isTopic } from '@/lib/shared/feed';
+import { TOPICS, articleDocument, articleFileName, isTopic, thumbUrl } from '@/lib/shared/feed';
 import type { FeedItem, SavedArticle } from '@/lib/shared/types';
 
 const READ_KEY = 'desk.feed.read';
@@ -87,7 +87,7 @@ function Card({ it, on, rd, when, onOpen }: { it: FeedItem; on: boolean; rd: boo
     <button type="button" className={`fcard ${rd ? 'rd' : ''} ${on ? 'on' : ''}`} onClick={onOpen}>
       <span className="ftxt">
         <span className="fmeta">
-          {it.sourceImage && <img src={it.sourceImage} alt="" loading="lazy" />}
+          {it.sourceImage && <img src={thumbUrl(it.sourceImage, 48)} alt="" loading="lazy" />}
           <span>
             {it.sourceTitle}
             {when ? ` · ${when}` : ''}
@@ -96,7 +96,7 @@ function Card({ it, on, rd, when, onOpen }: { it: FeedItem; on: boolean; rd: boo
         <b>{it.title}</b>
         {it.subtitle && <span className="fsub">{it.subtitle}</span>}
       </span>
-      {it.image && <img className="fimg" src={it.image} alt="" loading="lazy" />}
+      {it.image && <img className="fimg" src={thumbUrl(it.image, 160)} alt="" loading="lazy" />}
     </button>
   );
 }
@@ -297,7 +297,7 @@ export function FeedWin() {
               ‹ Back
             </button>
             <p className="fmeta">
-              {current.sourceImage && <img src={current.sourceImage} alt="" />}
+              {current.sourceImage && <img src={thumbUrl(current.sourceImage, 48)} alt="" />}
               <span>
                 {current.sourceTitle}
                 {current.author ? ` · ${current.author}` : ''}
@@ -313,8 +313,8 @@ export function FeedWin() {
               <button type="button" className="btn gh" disabled={html === undefined} onClick={() => html !== undefined && void downloadArticle(current, html)}>
                 Download ⤓
               </button>
-              <a className="btn gh" href={current.link} target="_blank" rel="noopener noreferrer">
-                Open on Substack ↗
+              <a className="btn gh" href={current.link} target="_blank" rel="noopener noreferrer" title="Open on Substack">
+                Substack ↗
               </a>
             </div>
             {html !== undefined ? (

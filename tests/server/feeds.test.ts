@@ -82,6 +82,8 @@ describe('feed.app — reading posts', () => {
     });
     expect(f.items[0].id).toMatch(/^[0-9a-f]{16}$/);
     expect(f.items[0].chars).toBeGreaterThan(1500);
+    const amp = parseFeed(RSS.replace('<title>Second</title>', '<title><![CDATA[Lavender &amp; Twine &#8212; &lt;3]]></title>'));
+    expect(amp.items[1].title).toBe('Lavender & Twine — <3');
     expect(() => parseFeed('<html>not a feed</html>')).toThrow(FeedError);
     expect(isSubstack(parseFeed(RSS.replace('<generator>Substack</generator>', '<generator>WordPress</generator>')))).toBe(false);
   });

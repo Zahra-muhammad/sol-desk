@@ -30,6 +30,15 @@ export const TOPICS: readonly { id: number; name: string }[] = [
 
 export const isTopic = (id: number) => TOPICS.some((t) => t.id === id);
 
+/**
+ * A small square thumbnail for a Substack image. Substack's raw uploads can be multi-megabyte PNGs or
+ * iPhone .heic files browsers can't show, so they go through Substack's own resizing CDN instead.
+ */
+export function thumbUrl(url: string, px: number): string {
+  if (!/^https:\/\/substack-post-media\.s3\.amazonaws\.com\//.test(url)) return url;
+  return `https://substackcdn.com/image/fetch/w_${px},h_${px},c_fill,f_auto,q_auto:good,fl_progressive:steep/${encodeURIComponent(url)}`;
+}
+
 /** A file name for a downloaded article. */
 export function articleFileName(title: string): string {
   const slug = title

@@ -376,7 +376,8 @@ button,a,.row{-webkit-tap-highlight-color:transparent}
 .fmeta img{width:16px;height:16px;border-radius:4px;flex:none;object-fit:cover}
 .fread h2{font-size:24px;line-height:1.2;letter-spacing:-.02em;margin:8px 0 6px}
 .fsub2{font-size:15px;color:var(--mut);margin:0 0 12px}
-.fbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+.fbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 16px}
+.fbar .btn{height:32px;padding:0 11px;font-size:12.5px}
 .fbar a.btn{display:inline-flex;align-items:center;text-decoration:none}
 .art{font-size:15.5px;line-height:1.65;max-width:680px;overflow-wrap:anywhere}
 .art img,.art picture,.art video{max-width:100%;height:auto;border-radius:8px}

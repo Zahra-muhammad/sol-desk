@@ -99,8 +99,20 @@ const txt = (v: unknown): string => {
   if (typeof v === 'object' && '#text' in (v as object)) return String((v as { '#text': unknown })['#text'] ?? '');
   return '';
 };
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+
+/** Undo HTML escaping for plain text (React escapes it again when it's shown). */
+export function decodeEntities(s: string): string {
+  return s.replace(/&(#x[0-9a-f]{1,6}|#\d{1,7}|[a-z]{2,8});/gi, (m, e: string) => {
+    if (e[0] !== '#') return ENTITIES[e.toLowerCase()] ?? m;
+    const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+    return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;
+  });
+}
+
+/** Tags stripped, entities decoded, whitespace collapsed. */
 const plain = (html: string, max: number) =>
-  sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} })
+  decodeEntities(sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} }))
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);

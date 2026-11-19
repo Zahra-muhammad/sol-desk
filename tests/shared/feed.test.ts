@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TOPICS, articleDocument, articleFileName, isTopic } from '@/lib/shared/feed';
+import { TOPICS, articleDocument, articleFileName, isTopic, thumbUrl } from '@/lib/shared/feed';
 
 describe('feed.app — downloads', () => {
   it('names the file after the title', () => {
@@ -26,6 +26,13 @@ describe('feed.app — downloads', () => {
     expect(doc).toContain('Design Notes · Sam · 17 November 2026');
     expect(doc).toContain('<p>Body</p>');
     expect(doc).toContain('href="https://designnotes.substack.com/p/x"');
+  });
+
+  it('shrinks Substack’s raw uploads into small thumbnails and leaves other images alone', () => {
+    const raw = 'https://substack-post-media.s3.amazonaws.com/public/images/abc_4320x2430.png';
+    expect(thumbUrl(raw, 160)).toBe(`https://substackcdn.com/image/fetch/w_160,h_160,c_fill,f_auto,q_auto:good,fl_progressive:steep/${encodeURIComponent(raw)}`);
+    expect(thumbUrl('https://substackcdn.com/image/fetch/w_1456/x.png', 160)).toBe('https://substackcdn.com/image/fetch/w_1456/x.png');
+    expect(thumbUrl('https://example.com/a.jpg', 160)).toBe('https://example.com/a.jpg');
   });
 
   it('knows its topics', () => {
