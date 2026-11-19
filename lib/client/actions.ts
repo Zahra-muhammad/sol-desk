@@ -38,7 +38,7 @@ export interface WinDef {
 // Compact defaults so more of the desk shows. Bump LAYOUT_VERSION when these change to shrink saved windows once.
 export const W: Record<WinKey, WinDef> = {
   today: { n: 'today.md', icon: 'file', w: 310, h: 410 },
-  calendar: { n: 'calendar.app', icon: 'app', w: 540, h: 440 },
+  calendar: { n: 'calendar.app', icon: 'app', w: 560, h: 480 },
   meetings: { n: 'meetings.txt', icon: 'file', w: 360, h: 440 },
   todo: { n: 'to-do.md', icon: 'file', w: 370, h: 430 },
   p1: { n: 'p1', icon: 'dir', w: 340, h: 440 },

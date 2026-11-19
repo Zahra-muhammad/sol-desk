@@ -390,3 +390,8 @@ button,a,.row{-webkit-tap-highlight-color:transparent}
  .fd:not(.has) .fread{display:none}
  #w-feed .nback{display:inline-flex}
 }
+
+/* ---- compact desk: keep the smaller calendar tidy ---- */
+.calh b{white-space:nowrap;font-size:18px}
+.calh .btn{padding:0 11px}
+@media (min-width:761px){.dc{min-height:52px}}
